@@ -1,7 +1,13 @@
 package com.tamimi.naqiice.ui
 
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -9,9 +15,11 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
@@ -19,34 +27,14 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.Logout
-import androidx.compose.material.icons.filled.Assessment
-import androidx.compose.material.icons.filled.Cloud
-import androidx.compose.material.icons.filled.CloudOff
-import androidx.compose.material.icons.filled.FactCheck
-import androidx.compose.material.icons.filled.Group
-import androidx.compose.material.icons.filled.Home
-import androidx.compose.material.icons.filled.LocalShipping
-import androidx.compose.material.icons.filled.Map
-import androidx.compose.material.icons.filled.Menu
-import androidx.compose.material.icons.filled.Settings
-import androidx.compose.material.icons.filled.ShoppingCart
-import androidx.compose.material.icons.filled.Sync
-import androidx.compose.material.icons.filled.Visibility
-import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.Surface
-import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -55,19 +43,22 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.rotate
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.painterResource
-import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
-import androidx.compose.ui.text.input.PasswordVisualTransformation
-import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.text.style.TextDirection
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
+import androidx.compose.ui.window.DialogWindowProvider
 import com.tamimi.naqiice.R
 import com.tamimi.naqiice.core.str
 import com.tamimi.naqiice.data.Me
@@ -88,40 +79,47 @@ fun LoginScreen() {
     var visible by remember { mutableStateOf(false) }
     var legacy by remember { mutableStateOf(false) }
     var busy by remember { mutableStateOf(false) }
-    var error by remember { mutableStateOf<String?>(null) }
 
-    Column(Modifier.fillMaxSize().background(Ice.gradient).windowInsetsPadding(WindowInsets.statusBars).imePadding()) {
-        Column(Modifier.fillMaxWidth().padding(top = 40.dp, bottom = 28.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Image(painterResource(R.drawable.logo), "ثلج نقي", Modifier.size(110.dp))
-            Text("ثلج نقي", color = Ice.onPrimary, fontSize = 30.sp, fontWeight = FontWeight.Bold)
-            Text("نظام إدارة التوزيع — المكلا", color = Ice.onPrimary.copy(alpha = 0.8f), fontSize = 14.sp)
+    Column(Modifier.fillMaxSize().background(Ice.gradient).imePadding().verticalScroll(rememberScrollState())) {
+        Column(
+            Modifier.fillMaxWidth().windowInsetsPadding(WindowInsets.statusBars).padding(start = 24.dp, end = 24.dp, top = 64.dp, bottom = 40.dp),
+            horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Image(painterResource(R.drawable.logo), "ثلج نقي", Modifier.size(120.dp))
+            Text("ثلج نقي", style = T.xl3.bold.color(Ice.onPrimary))
+            Text("نظام إدارة التوزيع — المكلا", style = T.sm.color(Ice.onPrimary.copy(alpha = 0.8f)))
         }
-        Surface(Modifier.fillMaxSize(), shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp), color = Ice.card) {
-            Column(Modifier.verticalScroll(rememberScrollState()).windowInsetsPadding(WindowInsets.navigationBars).padding(24.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
-                Text("تسجيل الدخول", fontSize = 18.sp, fontWeight = FontWeight.Bold)
-                notice?.let { Banner(Ice.warning.copy(alpha = 0.25f)) { Text(it, fontSize = 14.sp) } }
-                Field(username, { username = it }, if (legacy) "اسم المستخدم أو البريد السابق" else "اسم المستخدم / رمز الموظف", ltr = true, keyboard = KeyboardType.Email)
-                OutlinedTextField(
-                    value = credential, onValueChange = { credential = it },
-                    label = { Text(if (legacy) "كلمة المرور الحالية" else "رمز الدخول (٦ أرقام)") },
-                    singleLine = true, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(12.dp),
-                    textStyle = TextStyle(fontSize = 18.sp, textDirection = TextDirection.Ltr),
-                    visualTransformation = if (visible) VisualTransformation.None else PasswordVisualTransformation(),
-                    keyboardOptions = KeyboardOptions(keyboardType = if (legacy) KeyboardType.Password else KeyboardType.NumberPassword),
-                    trailingIcon = {
-                        IconButton({ visible = !visible }) { Icon(if (visible) Icons.Filled.VisibilityOff else Icons.Filled.Visibility, if (visible) "إخفاء الرمز" else "إظهار الرمز") }
-                    },
-                )
-                error?.let { Text(it, color = Ice.destructive, fontSize = 14.sp) }
-                BigButton(if (busy) "جارٍ الدخول…" else "دخول", enabled = !busy && username.isNotBlank() && credential.isNotEmpty()) {
-                    busy = true; error = null
-                    scope.launch {
-                        try { repo.signIn(username, credential) } catch (e: Exception) { error = e.userMessage("تعذّر تسجيل الدخول") } finally { busy = false }
+        Column(
+            Modifier.fillMaxWidth().heightIn(min = 600.dp).softShadow(Radius.xl3).background(Ice.card, RoundedCornerShape(topStart = Radius.xl3, topEnd = Radius.xl3))
+                .windowInsetsPadding(WindowInsets.navigationBars).padding(24.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp),
+        ) {
+            Text("تسجيل الدخول", style = T.lg.bold)
+            notice?.let { Banner(Ice.warning.copy(alpha = 0.3f)) { Text(it) } }
+            Labeled(if (legacy) "اسم المستخدم أو البريد السابق" else "اسم المستخدم / رمز الموظف") {
+                Input(username, { username = it }, height = 48.dp, ltr = true, keyboard = KeyboardType.Email)
+            }
+            Labeled(if (legacy) "كلمة المرور الحالية" else "رمز الدخول (٦ أرقام)") {
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Input(
+                        credential, { credential = it }, Modifier.weight(1f), height = 48.dp, ltr = true, password = !visible,
+                        keyboard = if (legacy) KeyboardType.Password else KeyboardType.NumberPassword,
+                    )
+                    Btn({ visible = !visible }, Modifier.size(48.dp), Variant.Outline, height = 48.dp, padding = androidx.compose.foundation.layout.PaddingValues(0.dp)) {
+                        Icon(if (visible) Lucide.EyeOff else Lucide.Eye, if (visible) "إخفاء الرمز" else "إظهار الرمز", Modifier.size(16.dp))
                     }
                 }
-                TextButton({ toast("نسيت رمز الدخول؟ تواصل مع المدير لإعادة تعيينه؛ لا تحتاج بريداً إلكترونياً.") }, Modifier.fillMaxWidth()) { Text("نسيت رمز الدخول؟") }
-                TextButton({ legacy = !legacy }, Modifier.fillMaxWidth()) { Text(if (legacy) "الدخول برمز الموظف" else "لدي حساب سابق") }
             }
+            Btn(if (busy) "جارٍ الدخول…" else "دخول", {
+                if (username.isBlank() || credential.isEmpty()) toast("أدخل اسم المستخدم ورمز الدخول") else {
+                    busy = true
+                    scope.launch {
+                        try { repo.signIn(username, credential) } catch (e: Exception) { toast(e.userMessage("تعذّر تسجيل الدخول")) } finally { busy = false }
+                    }
+                }
+            }, Modifier.fillMaxWidth(), enabled = !busy, height = 48.dp, style = T.base.medium)
+            Btn("نسيت رمز الدخول؟", { toast("نسيت رمز الدخول؟ تواصل مع المدير لإعادة تعيينه؛ لا تحتاج بريداً إلكترونياً.") }, Modifier.fillMaxWidth(), Variant.Ghost, height = 44.dp)
+            Btn(if (legacy) "الدخول برمز الموظف" else "لدي حساب سابق", { legacy = !legacy }, Modifier.fillMaxWidth(), Variant.Link, height = 44.dp)
         }
     }
 }
@@ -130,11 +128,11 @@ fun LoginScreen() {
 fun PendingScreen() {
     val repo = LocalRepo.current
     val scope = rememberCoroutineScope()
-    IceCard(Modifier.padding(top = 32.dp)) {
-        Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            Text("حسابك بانتظار التفعيل", fontSize = 20.sp, fontWeight = FontWeight.Bold)
-            Text("اطلب من المدير تحديد دورك (موزع أو مشرف) وربطك بشاحنة.", fontSize = 14.sp, color = Ice.mutedText, textAlign = TextAlign.Center)
-            MidButton("تحقق مرة أخرى") { scope.launch { repo.reloadMe() } }
+    IceCard(Modifier.padding(top = 40.dp), padding = 24.dp) {
+        Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(16.dp)) {
+            Text("حسابك بانتظار التفعيل", style = T.xl.bold)
+            Text("اطلب من المدير تحديد دورك (موزع أو مشرف) وربطك بشاحنة.", style = T.sm.muted, textAlign = TextAlign.Center)
+            Btn("تحقق مرة أخرى", { scope.launch { repo.reloadMe() } })
         }
     }
 }
@@ -145,18 +143,18 @@ private data class NavItem(val screen: Screen, val label: String, val icon: Imag
 
 private fun navItems(role: String?): List<NavItem> = when (role) {
     "distributor" -> listOf(
-        NavItem(Screen.Today, "اليوم", Icons.Filled.Home), NavItem(Screen.Customers, "العملاء", Icons.Filled.Group),
-        NavItem(Screen.Sale(), "بيع", Icons.Filled.ShoppingCart), NavItem(Screen.More, "المزيد", Icons.Filled.Menu),
+        NavItem(Screen.Today, "اليوم", Lucide.Home), NavItem(Screen.Customers, "العملاء", Lucide.Users),
+        NavItem(Screen.Sale(), "بيع", Lucide.ShoppingCart), NavItem(Screen.More, "المزيد", Lucide.Menu),
     )
     "supervisor" -> listOf(
-        NavItem(Screen.Trips, "الشاحنات", Icons.Filled.LocalShipping), NavItem(Screen.Closings, "الإغلاقات", Icons.Filled.FactCheck),
-        NavItem(Screen.Reports, "التقارير", Icons.Filled.Assessment), NavItem(Screen.RouteMap, "الخريطة", Icons.Filled.Map),
-        NavItem(Screen.Customers, "العملاء", Icons.Filled.Group),
+        NavItem(Screen.Trips, "الشاحنات", Lucide.Truck), NavItem(Screen.Closings, "الإغلاقات", Lucide.ClipboardCheck),
+        NavItem(Screen.Reports, "التقارير", Lucide.BarChart3), NavItem(Screen.RouteMap, "الخريطة", Lucide.Map),
+        NavItem(Screen.Customers, "العملاء", Lucide.Users),
     )
     "admin" -> listOf(
-        NavItem(Screen.Admin, "الرئيسية", Icons.Filled.Home), NavItem(Screen.Trips, "الشاحنات", Icons.Filled.LocalShipping),
-        NavItem(Screen.Reports, "التقارير", Icons.Filled.Assessment), NavItem(Screen.RouteMap, "الخريطة", Icons.Filled.Map),
-        NavItem(Screen.AdminSetup, "الإعدادات", Icons.Filled.Settings),
+        NavItem(Screen.Admin, "الرئيسية", Lucide.Home), NavItem(Screen.Trips, "الشاحنات", Lucide.Truck),
+        NavItem(Screen.Reports, "التقارير", Lucide.BarChart3), NavItem(Screen.RouteMap, "الخريطة", Lucide.Map),
+        NavItem(Screen.AdminSetup, "الإعدادات", Lucide.Settings),
     )
     else -> emptyList()
 }
@@ -168,45 +166,60 @@ fun AppShell(me: Me) {
     val scope = rememberCoroutineScope()
     var confirmSignOut by remember { mutableStateOf<Int?>(null) }
     val items = navItems(me.primaryRole)
+    val statusBar = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
+    // "Keep the screen on" applies on every screen while the distributor's campaign is open.
+    val view = LocalView.current
+    val snap by repo.snapshot.collectAsState()
+    val wake by repo.keepAwake.collectAsState()
+    val awake = wake && me.primaryRole == "distributor" && snap.ownOpenTrip(me.id) && !snap.closingSent
+    androidx.compose.runtime.DisposableEffect(awake) {
+        view.keepScreenOn = awake
+        onDispose { view.keepScreenOn = false }
+    }
 
     Column(Modifier.fillMaxSize().background(Ice.background)) {
+        // header: sticky bg-ice px-4 pb-3 pt-[max(0.75rem, safe-area)] shadow-soft
         Row(
-            Modifier.fillMaxWidth().background(Ice.gradient).windowInsetsPadding(WindowInsets.statusBars).padding(horizontal = 12.dp, vertical = 8.dp),
-            verticalAlignment = Alignment.CenterVertically,
+            Modifier.fillMaxWidth().softShadow(0.dp).background(Ice.gradient).padding(start = 16.dp, end = 16.dp, top = maxOf(12.dp, statusBar), bottom = 12.dp),
+            verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            Image(painterResource(R.drawable.logo), "ثلج نقي", Modifier.size(42.dp))
-            Column(Modifier.weight(1f).padding(horizontal = 10.dp)) {
-                Text("ثلج نقي", color = Ice.onPrimary, fontWeight = FontWeight.Bold)
-                Text(me.fullName.ifBlank { me.email ?: "" }, color = Ice.onPrimary.copy(alpha = 0.8f), fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Image(painterResource(R.drawable.logo), "ثلج نقي", Modifier.size(44.dp))
+            Column(Modifier.weight(1f)) {
+                Text("ثلج نقي", style = T.base.bold.copy(lineHeight = 20.sp, color = Ice.onPrimary))
+                Text(me.fullName.ifBlank { me.email ?: "" }, style = T.xs.color(Ice.onPrimary.copy(alpha = 0.8f)), maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
-            SyncButton()
-            IconButton({
-                val waiting = repo.pendingCount()
-                if (waiting > 0) confirmSignOut = waiting else scope.launch { repo.signOut() }
-            }) { Icon(Icons.AutoMirrored.Filled.Logout, "تسجيل الخروج", tint = Ice.onPrimary) }
+            androidx.compose.runtime.CompositionLocalProvider(androidx.compose.material3.LocalContentColor provides Ice.onPrimary) { SyncButton() }
+            Box(
+                Modifier.size(36.dp).clip(CircleShape).clickable {
+                    val waiting = repo.pendingCount()
+                    if (waiting > 0) confirmSignOut = waiting else scope.launch { repo.signOut() }
+                },
+                contentAlignment = Alignment.Center,
+            ) { Icon(Lucide.LogOut, "تسجيل الخروج", Modifier.size(20.dp), tint = Ice.onPrimary) }
         }
         if (me.isManager) InvoiceChangeNotice()
         Box(Modifier.weight(1f).fillMaxWidth().imePadding()) {
             // Each screen keeps its own form state while it is on top of the stack.
             androidx.compose.runtime.key(nav.current, nav.stack.size) {
-                Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 16.dp, vertical = 16.dp)) {
+                // main: px-4 pt-4, with room below the last control
+                Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(start = 16.dp, end = 16.dp, top = 16.dp, bottom = 48.dp)) {
                     ScreenContent(nav.current, me)
-                    Spacer(Modifier.height(24.dp))
                 }
             }
         }
         if (items.isEmpty()) Spacer(Modifier.windowInsetsPadding(WindowInsets.navigationBars))
         if (items.isNotEmpty()) {
-            HorizontalDivider(color = Ice.border)
+            // nav: border-t bg-card; items flex-col gap-1 py-2.5 text-xs with size-6 icons
+            Divider()
             Row(Modifier.fillMaxWidth().background(Ice.card).windowInsetsPadding(WindowInsets.navigationBars)) {
                 items.forEach { item ->
                     val active = nav.stack.first()::class == item.screen::class || nav.current::class == item.screen::class
                     Column(
-                        Modifier.weight(1f).clickable { nav.home(item.screen) }.padding(vertical = 8.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally,
+                        Modifier.weight(1f).tap { nav.home(item.screen) }.padding(vertical = 10.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(4.dp),
                     ) {
-                        Icon(item.icon, null, tint = if (active) Ice.accent else Ice.mutedText, modifier = Modifier.size(24.dp))
-                        Text(item.label, fontSize = 12.sp, color = if (active) Ice.primary else Ice.mutedText, fontWeight = if (active) FontWeight.SemiBold else FontWeight.Normal)
+                        Icon(item.icon, null, Modifier.size(24.dp), tint = if (active) Ice.accent else Ice.mutedText)
+                        Text(item.label, style = if (active) T.xs.semibold.color(Ice.primary) else T.xs.muted)
                     }
                 }
             }
@@ -216,9 +229,8 @@ fun AppShell(me: Me) {
     confirmSignOut?.let { count ->
         AlertDialog(
             onDismissRequest = { confirmSignOut = null },
-            title = { Text("تسجيل الخروج؟") },
-            text = { Text("يوجد $count سجل محفوظ على الهاتف لم تكتمل مزامنته. سيبقى محفوظاً لهذا الحساب.") },
-            confirmButton = { TextButton({ confirmSignOut = null; scope.launch { repo.signOut() } }) { Text("تسجيل الخروج") } },
+            text = { Text("يوجد $count سجل محفوظ على الهاتف لم تكتمل مزامنته. سيبقى محفوظاً لهذا الحساب. تسجيل الخروج؟") },
+            confirmButton = { TextButton({ confirmSignOut = null; scope.launch { repo.signOut() } }) { Text("موافق") } },
             dismissButton = { TextButton({ confirmSignOut = null }) { Text("إلغاء") } },
         )
     }
@@ -265,12 +277,40 @@ private fun Guard(allowed: Boolean, content: @Composable () -> Unit) {
     if (allowed) content() else Empty("ليست لديك صلاحية لهذه الصفحة.")
 }
 
+// ---- dialogs --------------------------------------------------------------------------
+
+/** The web `Dialog`: full-width sheet in the middle, black/80 backdrop, centred title, close ×. */
+@Composable
+fun WebDialog(title: String, onClose: () -> Unit, content: @Composable () -> Unit) {
+    Dialog(onClose, DialogProperties(usePlatformDefaultWidth = false)) {
+        val window = (LocalView.current.parent as? DialogWindowProvider)?.window
+        SideEffect { window?.setDimAmount(0.8f) }
+        // A dialog opened from the header must not inherit the header's white text.
+        androidx.compose.runtime.CompositionLocalProvider(androidx.compose.material3.LocalContentColor provides Ice.foreground) {
+        Box(Modifier.fillMaxWidth().heightIn(max = 620.dp).largeShadow(0.dp).background(Ice.background).border(1.dp, Ice.border)) {
+            Column(Modifier.verticalScroll(rememberScrollState()).padding(24.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                Text(title, Modifier.fillMaxWidth(), style = T.lg.semibold.copy(lineHeight = 18.sp), textAlign = TextAlign.Center)
+                content()
+            }
+            // `right-4 top-4`: the physical right, i.e. the start edge in this RTL layout.
+            Icon(Lucide.X, "إغلاق", Modifier.align(Alignment.TopStart).padding(16.dp).size(16.dp).alpha(0.7f).tap(onClick = onClose))
+        }
+        }
+    }
+}
+
 // ---- sync status ----------------------------------------------------------------------
 
 private val KIND_LABELS = mapOf(
     "sale" to "فاتورة", "payment" to "تحصيل", "expense" to "مصروف", "closing" to "إغلاق",
     "customer" to "عميل", "maintenance" to "صيانة", "freezer_event" to "ثلاجة", "gps" to "موقع",
 )
+
+@Composable
+private fun Spinning(icon: ImageVector, spin: Boolean) {
+    val angle by rememberInfiniteTransition(label = "sync").animateFloat(0f, 360f, infiniteRepeatable(tween(1000, easing = LinearEasing)), label = "sync")
+    Icon(icon, null, Modifier.size(16.dp).rotate(if (spin) angle else 0f))
+}
 
 @Composable
 private fun SyncButton() {
@@ -280,23 +320,18 @@ private fun SyncButton() {
     val syncing by repo.syncing.collectAsState()
     val lastError by repo.lastError.collectAsState()
     var open by remember { mutableStateOf(false) }
-    val active = pending.filter { it.state != "set_aside" }
+    val active = pending.count { it.state != "set_aside" }
     val label = when {
         pending.any { it.state == "review" } -> "طلب يحتاج مراجعة"
         lastError != null || pending.any { it.lastError != null && it.state != "set_aside" } -> "تعذّرت المزامنة"
         !online -> "بدون إنترنت"
-        syncing -> "مزامنة…"
         else -> "متصل"
     }
-    val failing = label == "تعذّرت المزامنة" || label == "طلب يحتاج مراجعة"
-    Row(
-        Modifier.background(if (!online) Ice.warning else if (failing) Ice.destructive else Ice.onPrimary.copy(alpha = 0.15f), RoundedCornerShape(50))
-            .clickable { open = true }.padding(horizontal = 10.dp, vertical = 6.dp),
-        verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp),
-    ) {
-        val tint = if (!online) Ice.onWarning else Ice.onPrimary
-        Icon(if (syncing) Icons.Filled.Sync else if (online) Icons.Filled.Cloud else Icons.Filled.CloudOff, null, tint = tint, modifier = Modifier.size(16.dp))
-        Text(label + if (active.isNotEmpty()) " (${active.size})" else "", color = tint, fontSize = 12.sp)
+    Btn({ open = true }, variant = Variant.Ghost, height = 44.dp) {
+        Row(horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
+            if (syncing) Spinning(Lucide.RefreshCw, true) else Icon(Lucide.Cloud, null, Modifier.size(16.dp))
+            Text(label + if (active > 0) " ($active)" else "")
+        }
     }
     if (open) SyncDialog(pending, online, syncing, lastError) { open = false }
 }
@@ -307,56 +342,54 @@ private fun SyncDialog(pending: List<OutboxOp>, online: Boolean, syncing: Boolea
     val scope = rememberCoroutineScope()
     var selected by remember { mutableStateOf<String?>(null) }
     var confirmAside by remember { mutableStateOf<OutboxOp?>(null) }
-    AlertDialog(
-        onDismissRequest = close,
-        title = { Text("حالة المزامنة") },
-        confirmButton = { TextButton(close) { Text("إغلاق") } },
-        text = {
-            Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                lastError?.let { Text(it, color = Ice.destructive, fontSize = 14.sp) }
-                MidButton("مزامنة الآن", enabled = !syncing && online) { scope.launch { repo.syncNow() } }
-                // Route points are many and need no review; show them as one line.
-                val points = pending.count { it.kind == "gps" && it.lastError == null }
-                val shown = pending.filter { it.kind != "gps" || it.lastError != null }
-                if (pending.isEmpty()) Text("لا توجد سجلات بانتظار المزامنة")
-                if (points > 0) Text("$points نقطة موقع محفوظة بانتظار الرفع", fontSize = 14.sp, color = Ice.mutedText)
-                shown.forEach { op ->
-                    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                            Text(KIND_LABELS[op.kind] ?: op.kind, fontWeight = FontWeight.Bold)
-                            Text(
-                                when (op.state) {
-                                    "review" -> "لم يُرفع — يحتاج مراجعة"
-                                    "set_aside" -> "مُنحّى عن المزامنة — محفوظ للمراجعة"
-                                    "reconciled" -> "طلب زائد مطابق؛ بانتظار الأرشفة المحلية"
-                                    "acknowledged" -> "تم الرفع؛ بانتظار تأكيد النسخة المحلية"
-                                    else -> "محفوظ على الهاتف"
-                                },
-                                fontSize = 13.sp,
-                            )
-                        }
-                        Text(op.payload.str("invoice_no") ?: op.id, fontSize = 11.sp, color = Ice.mutedText, style = TextStyle(textDirection = TextDirection.Ltr))
-                        op.lastError?.let { Text(it, color = Ice.destructive, fontSize = 14.sp) }
-                        if (op.lastError != null && op.state != "review" && op.state != "set_aside") {
-                            MidButton("إعادة المحاولة", outlined = true, enabled = !syncing && online) { scope.launch { repo.retry(op) } }
-                        }
-                        if (op.state == "review") MidButton("تنحية هذا الطلب مع الاحتفاظ به", outlined = true, enabled = !syncing) { confirmAside = op }
-                        if (op.state in listOf("review", "set_aside", "reconciled")) {
-                            TextButton({ selected = if (selected == op.id) null else op.id }) { Text("عرض بيانات الطلب") }
-                            if (selected == op.id) Text(op.payload.toString(), fontSize = 11.sp, fontFamily = FontFamily.Monospace, style = TextStyle(textDirection = TextDirection.Ltr))
-                        }
-                        if (op.lastError != null) Text("السجل محفوظ ولم يُحذف. راجع المدير عند رفض المخزون أو السعر أو الحملة.", fontSize = 12.sp, color = Ice.mutedText)
-                        HorizontalDivider(color = Ice.border)
+    WebDialog("حالة المزامنة", close) {
+        lastError?.let { Text(it, style = T.sm.color(Ice.destructive)) }
+        Btn({ scope.launch { repo.syncNow() } }, Modifier.fillMaxWidth(), enabled = !syncing && online) {
+            Icon(Lucide.RefreshCw, null, Modifier.size(16.dp))
+            Text("مزامنة الآن")
+        }
+        if (pending.isEmpty()) Text("لا توجد سجلات بانتظار المزامنة")
+        // Route points can pile up offline; the newest fifty are listed, the rest counted.
+        val points = pending.filter { it.kind == "gps" && it.lastError == null }
+        val shown = pending.filter { it.kind != "gps" || it.lastError != null } + points.takeLast(50)
+        Column {
+            shown.forEach { op ->
+                Column(Modifier.padding(vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text(KIND_LABELS[op.kind] ?: op.kind, Modifier.weight(1f), style = T.sm.bold)
+                        Text(
+                            when (op.state) {
+                                "review" -> "لم يُرفع — يحتاج مراجعة"
+                                "set_aside" -> "مُنحّى عن المزامنة — محفوظ للمراجعة"
+                                "reconciled" -> "طلب زائد مطابق؛ بانتظار الأرشفة المحلية"
+                                "acknowledged" -> "تم الرفع؛ بانتظار تأكيد النسخة المحلية"
+                                else -> "محفوظ على الهاتف"
+                            },
+                            style = T.sm,
+                        )
                     }
+                    Text(op.payload.str("invoice_no") ?: op.id, Modifier.fillMaxWidth(), style = T.xs.muted.ltr, textAlign = TextAlign.Left)
+                    op.lastError?.let { Text(it, style = T.sm.color(Ice.destructive)) }
+                    if (op.lastError != null && op.state != "review" && op.state != "set_aside") {
+                        Btn("إعادة المحاولة", { scope.launch { repo.retry(op) } }, variant = Variant.Outline, enabled = !syncing && online, height = 44.dp)
+                    }
+                    if (op.state == "review") Btn("تنحية هذا الطلب مع الاحتفاظ به", { confirmAside = op }, variant = Variant.Outline, enabled = !syncing)
+                    if (op.state in listOf("review", "set_aside", "reconciled")) {
+                        Btn("عرض بيانات الطلب", { selected = if (selected == op.id) null else op.id }, variant = Variant.Outline)
+                        if (selected == op.id) Text(op.payload.toString(), style = T.xs.ltr.copy(fontFamily = FontFamily.Monospace))
+                    }
+                    if (op.lastError != null) Text("السجل محفوظ ولم يُحذف. راجع المدير عند رفض المخزون أو السعر أو الحملة.", style = T.xs.muted)
                 }
+                Divider()
             }
-        },
-    )
+        }
+        if (points.size > 50) Text("و${points.size - 50} نقطة موقع أخرى محفوظة على الهاتف", style = T.sm.muted)
+    }
     confirmAside?.let { op ->
         AlertDialog(
             onDismissRequest = { confirmAside = null },
             text = { Text("تنحية هذا الطلب وحده عن المزامنة؟ لن يُعتبر مرفوعاً ولن تُحذف بياناته.") },
-            confirmButton = { TextButton({ confirmAside = null; scope.launch { runCatching { repo.setAside(op) } } }) { Text("تنحية") } },
+            confirmButton = { TextButton({ confirmAside = null; scope.launch { runCatching { repo.setAside(op) } } }) { Text("موافق") } },
             dismissButton = { TextButton({ confirmAside = null }) { Text("إلغاء") } },
         )
     }

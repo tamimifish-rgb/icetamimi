@@ -1,6 +1,5 @@
 package com.tamimi.naqiice.core
 
-import java.text.NumberFormat
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -120,22 +119,43 @@ fun uniqueInvoiceNumber(truckCode: String, id: String, now: Long = System.curren
 
 // ---- formatting -----------------------------------------------------------------------
 
-private val AR_YE = Locale("ar", "YE")
+// Same output as the web's Intl formatters for ar-YE, built by hand so every Android
+// version (and the JVM tests) prints identical text.
 
-fun formatNum(n: Double?): String =
-    NumberFormat.getInstance(AR_YE).apply { maximumFractionDigits = 2 }.format(n ?: 0.0)
-
-fun formatMoney(n: Double?): String =
-    NumberFormat.getInstance(AR_YE).apply { maximumFractionDigits = 0 }.format(n ?: 0.0) + " ر.ي"
-
-fun formatDate(iso: String?): String {
-    val t = parseIso(iso) ?: return iso ?: ""
-    return SimpleDateFormat("d MMM yyyy، h:mm a", AR_YE).apply { timeZone = ADEN }.format(Date(t))
+private fun arabic(text: String): String = buildString {
+    for (ch in text) append(when (ch) { in '0'..'9' -> '\u0660' + (ch - '0'); ',' -> '\u066C'; '.' -> '\u066B'; '-' -> "\u061C-"; else -> ch })
 }
 
+private fun grouped(n: Double?, fractionDigits: Int): String {
+    val value = n?.takeIf { it.isFinite() } ?: 0.0
+    val format = java.text.DecimalFormat("#,##0.##", java.text.DecimalFormatSymbols(Locale.US)).apply {
+        maximumFractionDigits = fractionDigits
+        roundingMode = java.math.RoundingMode.HALF_EVEN
+    }
+    val text = format.format(value)
+    return arabic(if (text == "-0") "0" else text)
+}
+
+fun formatNum(n: Double?): String = grouped(n, 2)
+
+fun formatMoney(n: Double?): String = grouped(n, 0) + " ر.ي"
+
+private fun adenCalendar(at: Long) = java.util.Calendar.getInstance(ADEN, Locale.US).apply { timeInMillis = at }
+private fun meridiem(cal: java.util.Calendar) = if (cal.get(java.util.Calendar.AM_PM) == java.util.Calendar.AM) "ص" else "م"
+private fun hour12(cal: java.util.Calendar) = cal.get(java.util.Calendar.HOUR).let { if (it == 0) 12 else it }
+
+/** e.g. ١٤‏/١١‏/٢٠٢٦، ٩:٠٠ ص (medium date, short time, Aden). */
+fun formatDate(iso: String?): String {
+    val cal = adenCalendar(parseIso(iso) ?: return iso ?: "")
+    val date = "${cal.get(java.util.Calendar.DAY_OF_MONTH)}\u200F/${cal.get(java.util.Calendar.MONTH) + 1}\u200F/${cal.get(java.util.Calendar.YEAR)}"
+    val time = "${hour12(cal)}:${"%02d".format(Locale.US, cal.get(java.util.Calendar.MINUTE))}"
+    return arabic("$date، $time") + " " + meridiem(cal)
+}
+
+/** e.g. ٠٧:٤١:٥٩ م */
 fun adenTime(iso: String?): String {
-    val t = parseIso(iso) ?: return "—"
-    return SimpleDateFormat("hh:mm:ss a", AR_YE).apply { timeZone = ADEN }.format(Date(t))
+    val cal = adenCalendar(parseIso(iso) ?: return "—")
+    return arabic("%02d:%02d:%02d".format(Locale.US, hour12(cal), cal.get(java.util.Calendar.MINUTE), cal.get(java.util.Calendar.SECOND))) + " " + meridiem(cal)
 }
 
 // ---- phones ---------------------------------------------------------------------------

@@ -12,11 +12,21 @@ import android.os.Build
 import android.provider.Settings
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.Icon
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -99,21 +109,23 @@ fun rememberLocationGate(allowNoFix: Boolean = false): LocationGate {
 
     val blocked = required && decision == LocationDecision.BLOCKED
     val prompt: @Composable () -> Unit = {
-        if (blocked) Banner(Ice.card, borderColor = Ice.destructive) {
-            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                Text("الموقع مطلوب للموزع", fontWeight = FontWeight.Bold)
-                Text(if (denied) "اسمح لهذا التطبيق باستخدام الموقع الدقيق لإكمال الرحلة." else "شغّل موقع الهاتف (GPS) ثم أعد المحاولة.", fontSize = 14.sp)
-                if (allowNoFix && !denied) Text("إذا كان الإذن مسموحاً وتعذّر تحديد الموقع لدقيقتين، يمكن حفظ الفاتورة بعلامة «بدون موقع».", fontSize = 13.sp)
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    if (denied) MidButton("السماح بالموقع", outlined = true) {
-                        val wanted = mutableListOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION)
-                        if (Build.VERSION.SDK_INT >= 33) wanted.add(Manifest.permission.POST_NOTIFICATIONS)
-                        permissions.launch(wanted.toTypedArray())
-                    }
-                    if (denied) MidButton("إعدادات التطبيق", outlined = true) { openAppSettings(context) }
-                    MidButton("إعادة المحاولة", enabled = !busy) { scope.launch { check() } }
-                }
+        // section[role=alert].space-y-3.border.border-destructive.rounded-lg.p-4
+        if (blocked) Column(
+            Modifier.fillMaxWidth().border(1.dp, Ice.destructive, RoundedCornerShape(Radius.lg)).padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Text("الموقع مطلوب للموزع", style = T.base.bold)
+            Text(if (denied) "اسمح لهذا التطبيق باستخدام الموقع من إعدادات الهاتف." else "شغّل موقع الهاتف (GPS) واسمح للتطبيق باستخدامه، ثم أعد المحاولة.")
+            if (denied) Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Btn("السماح بالموقع الدقيق", {
+                    val wanted = mutableListOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION)
+                    if (Build.VERSION.SDK_INT >= 33) wanted.add(Manifest.permission.POST_NOTIFICATIONS)
+                    permissions.launch(wanted.toTypedArray())
+                }, variant = Variant.Outline)
+                Btn("إعدادات التطبيق", { openAppSettings(context) }, variant = Variant.Outline)
             }
+            if (allowNoFix && !denied) Text("إذا كان الإذن مسموحاً وتعذّر تحديد الموقع لدقيقتين، يمكن حفظ الفاتورة بعلامة «بدون موقع».", style = T.sm)
+            Row { Btn("إعادة المحاولة", { scope.launch { check() } }, enabled = !busy) }
         }
     }
     return LocationGate(required, blocked, prompt, check)
@@ -164,9 +176,9 @@ object Photos {
     }
 }
 
-/** Camera and gallery buttons; [path] is the saved photo on the phone, if any. */
+/** Saves a camera capture or a gallery pick on the phone and reports its path. */
 @Composable
-fun PhotoPick(label: String, path: String?, onChange: (String?) -> Unit) {
+private fun rememberPhotoSource(onChange: (String?) -> Unit): Pair<() -> Unit, () -> Unit> {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val toast = rememberToast()
@@ -185,16 +197,48 @@ fun PhotoPick(label: String, path: String?, onChange: (String?) -> Unit) {
         if (taken && file != null) accept(Photos.uriFor(context, file), file) else file?.delete()
     }
     val gallery = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { accept(it) }
-    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-        Text(if (path != null) "$label ✓" else label, fontSize = 14.sp, color = if (path != null) Ice.success else Ice.foreground)
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            MidButton("الكاميرا", Modifier.weight(1f), outlined = true) {
-                val file = Photos.newCaptureFile(context)
-                capture = file
-                runCatching { camera.launch(Photos.uriFor(context, file)) }.onFailure { toast("تعذّر فتح الكاميرا") }
+    val openCamera = {
+        val file = Photos.newCaptureFile(context)
+        capture = file
+        runCatching { camera.launch(Photos.uriFor(context, file)) }.onFailure { toast("تعذّر فتح الكاميرا") }
+        Unit
+    }
+    val openGallery = { runCatching { gallery.launch("image/*") }; Unit }
+    return openCamera to openGallery
+}
+
+/** The web's dashed "take a photo" box; like there, a tap opens the camera. */
+@Composable
+fun PhotoPick(label: String, path: String?, onChange: (String?) -> Unit) {
+    val (openCamera, _) = rememberPhotoSource(onChange)
+    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Row(
+            Modifier.fillMaxWidth().height(48.dp).background(Ice.card, RoundedCornerShape(Radius.md)).dashedBorder(Radius.md, Ice.input).tap(onClick = openCamera).padding(horizontal = 12.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally), verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Icon(Lucide.Camera, null, Modifier.size(20.dp), tint = Ice.accent)
+            Text(if (path != null) "${File(path).name}" else label, style = T.sm, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        }
+        if (path != null) Text("إزالة الصورة", style = T.sm.color(Ice.destructive), modifier = Modifier.tap { onChange(null) })
+    }
+}
+
+/** Deposit slips may come from the camera or the gallery. */
+@Composable
+fun DepositPhoto(path: String?, onChange: (String?) -> Unit) {
+    val (openCamera, openGallery) = rememberPhotoSource(onChange)
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Text("صورة إيصال الإيداع (مطلوبة)", style = T.sm)
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            listOf("الكاميرا" to openCamera, "معرض الصور" to openGallery).forEach { (label, open) ->
+                Box(Modifier.heightIn(min = 44.dp).border(1.dp, Ice.input, RoundedCornerShape(Radius.md)).tap(onClick = open).padding(horizontal = 12.dp), contentAlignment = Alignment.Center) {
+                    Text(label, style = T.sm)
+                }
             }
-            MidButton("معرض الصور", Modifier.weight(1f), outlined = true) { runCatching { gallery.launch("image/*") } }
-            if (path != null) MidButton("إزالة", outlined = true, danger = true) { onChange(null) }
+        }
+        if (path != null) Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text(File(path).name, style = T.sm, modifier = Modifier.weight(1f, fill = false))
+            Btn("إزالة", { onChange(null) }, variant = Variant.Ghost, height = 32.dp, style = T.xs.medium)
         }
     }
 }

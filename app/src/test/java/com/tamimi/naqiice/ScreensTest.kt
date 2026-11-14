@@ -9,7 +9,7 @@ import androidx.activity.ComponentActivity
 import android.os.Handler
 import android.os.Looper
 import android.view.PixelCopy
-import androidx.compose.ui.test.onAllNodesWithText
+import androidx.compose.ui.test.onAllNodesWithContentDescription
 import androidx.compose.ui.test.onFirst
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
@@ -24,6 +24,7 @@ import com.tamimi.naqiice.ui.LoginScreen
 import com.tamimi.naqiice.ui.Nav
 import com.tamimi.naqiice.ui.PureIceTheme
 import com.tamimi.naqiice.ui.Screen
+import kotlinx.coroutines.launch
 import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.buildJsonArray
 import kotlinx.serialization.json.buildJsonObject
@@ -44,61 +45,41 @@ private const val TRIP = "33333333-3333-3333-3333-333333333333"
 /** Renders the real screens on the JVM with a sample campaign: no crash, key content shown. */
 @RunWith(RobolectricTestRunner::class)
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
-@Config(sdk = [34], qualifiers = "ar-rYE-w411dp-h891dp-xxhdpi")
+@Config(sdk = [34], qualifiers = "ar-rYE-w411dp-h891dp-xhdpi", application = FixtureApp::class)
 class ScreensTest {
     @get:Rule val compose = createAndroidComposeRule<ComponentActivity>()
-    private val app get() = ApplicationProvider.getApplicationContext<PureIceApp>()
+    private val app get() = ApplicationProvider.getApplicationContext<FixtureApp>()
     private val repo get() = app.repo
     private lateinit var nav: Nav
 
-    private fun sampleRef() = buildJsonObject {
-        put("ownerId", OWNER)
-        put("includedIds", buildJsonArray { add(kotlinx.serialization.json.JsonPrimitive("s0")) })
-        put("variants", buildJsonArray {
-            add(buildJsonObject { put("id", "v1"); put("name", "ثلج مجروش ٥ كجم"); put("unit", "كيس"); put("price", 500) })
-            add(buildJsonObject { put("id", "v2"); put("name", "قالب ثلج"); put("unit", "قالب"); put("price", 1500) })
-        })
-        put("regions", buildJsonArray { add(buildJsonObject { put("id", "r1"); put("name", "المكلا") }); add(buildJsonObject { put("id", "r2"); put("name", "فوة") }) })
-        put("customers", buildJsonArray {
-            add(buildJsonObject { put("id", "c1"); put("name", "بقالة النور"); put("phone", "771234567"); put("region_id", "r1"); put("credit_limit", 0); put("active", true) })
-            add(buildJsonObject { put("id", "c2"); put("name", "مطعم البحر"); put("phone", JsonNull); put("region_id", "r2"); put("credit_limit", 5000); put("active", true) })
-        })
-        put("prices", buildJsonArray { add(buildJsonObject { put("customer_id", "c1"); put("variant_id", "v1"); put("price", 450) }) })
-        put("balances", buildJsonArray { add(buildJsonObject { put("customer_id", "c1"); put("balance", 2000); put("month_sales", 40000); put("total_sales", 90000) }) })
-        put("freezers", buildJsonArray {
-            add(buildJsonObject { put("id", "f1"); put("serial", "FZ-001"); put("status", "placed"); put("customer_id", "c1"); put("freezer_models", buildJsonObject { put("name", "٣٠٠ لتر") }) })
-            add(buildJsonObject { put("id", "f2"); put("serial", "FZ-002"); put("status", "warehouse"); put("customer_id", JsonNull) })
-        })
-        put("models", buildJsonArray { })
-        put("trucks", buildJsonArray { add(buildJsonObject { put("id", "t1"); put("code", "T1"); put("name", "شاحنة ١") }) })
-        put("trip", buildJsonObject { put("id", TRIP); put("truck_id", "t1"); put("distributor_id", OWNER); put("status", "open"); put("loading_approved_at", "2026-11-14T05:00:00+00:00") })
-        put("stock", buildJsonArray {
-            add(buildJsonObject { put("variant_id", "v1"); put("loaded", 100); put("sold", 10); put("returned", 0); put("damaged", 0) })
-            add(buildJsonObject { put("variant_id", "v2"); put("loaded", 20); put("sold", 20); put("returned", 0); put("damaged", 0) })
-        })
-        put("unapprovedLoads", buildJsonArray { add(buildJsonObject { put("id", "l1"); put("variant_id", "v1"); put("qty", 30) }) })
-        put("salesToday", buildJsonArray {
-            add(buildJsonObject {
-                put("id", "s0"); put("invoice_no", "T1-20261114-abc"); put("trip_id", TRIP); put("customer_id", "c1"); put("total", 4500); put("cash_paid", 2500); put("credit_amount", 2000)
-                put("lat", 14.53); put("lng", 49.12); put("created_by", OWNER); put("created_at", "2026-11-14T06:00:00+00:00")
-                put("sale_items", buildJsonArray { add(buildJsonObject { put("id", "i0"); put("variant_id", "v1"); put("qty", 10); put("unit_price", 450); put("line_total", 4500) }) })
-            })
-        })
-        put("paymentsToday", buildJsonArray { })
-        put("expensesToday", buildJsonArray { add(buildJsonObject { put("id", "e0"); put("category", "وقود"); put("amount", 3000); put("created_at", "2026-11-14T07:00:00+00:00") }) })
-        put("closing", JsonNull)
-        put("day", "2026-11-14"); put("pulledAt", 1)
-    }
-
     @Before fun signedInDistributor() {
         Shadows.shadowOf(app).grantPermissions(Manifest.permission.ACCESS_FINE_LOCATION)
-        repo.me.value = Me(OWNER, null, "سالم الموزع", "t1", listOf("distributor"))
-        repo.ref.value = sampleRef()
-        repo.loading.value = false
+        // A fresh position, so the location gate is open as it is for a working distributor.
+        val manager = app.getSystemService(android.content.Context.LOCATION_SERVICE) as android.location.LocationManager
+        Shadows.shadowOf(manager).setProviderEnabled(android.location.LocationManager.GPS_PROVIDER, true)
+        Shadows.shadowOf(manager).setLastKnownLocation(android.location.LocationManager.GPS_PROVIDER, android.location.Location(android.location.LocationManager.GPS_PROVIDER).apply {
+            latitude = 14.53; longitude = 49.12; accuracy = 10f; time = System.currentTimeMillis()
+        })
+        repo.tracking.value = com.tamimi.naqiice.data.TrackingState(OWNER, TRIP, "active", "2026-11-14T16:41:59.000Z")
         repo.online.value = true
     }
 
-    private fun show(home: Screen) {
+    /** Signs in through the fixture and waits for the first full sync, as on a real phone. */
+    private fun signedIn(role: String = "distributor") {
+        Fixture.role = role
+        compose.runOnUiThread { repo.online.value = true; repo.start() }
+        compose.waitUntil(30_000) { pump(); repo.me.value?.primaryRole == role }
+        // The app was created offline, so its first sync was skipped; run one now.
+        compose.runOnUiThread { repo.scope.launch { repo.syncNow() } }
+        compose.waitUntil(30_000) { pump(); repo.ref.value != null && !repo.syncing.value }
+        compose.runOnUiThread { repo.tracking.value = com.tamimi.naqiice.data.TrackingState(OWNER, TRIP, "active", "2026-11-14T16:41:59.000Z") }
+    }
+
+    /** Lets work finished on background threads continue on the (paused) main looper. */
+    private fun pump() { Thread.sleep(20); Shadows.shadowOf(Looper.getMainLooper()).idle() }
+
+    private fun show(home: Screen, role: String = "distributor") {
+        signedIn(role)
         compose.setContent {
             PureIceTheme {
                 CompositionLocalProvider(LocalRepo provides repo) {
@@ -141,8 +122,8 @@ class ScreensTest {
 
         open(Screen.Sale("c1"), "sale")
         compose.onNodeWithText("ثلج مجروش ٥ كجم").assertExists()
-        compose.onAllNodesWithText("+").onFirst().performClick()
-        compose.onAllNodesWithText("+").onFirst().performClick()
+        compose.onAllNodesWithContentDescription("زيادة").onFirst().performClick()
+        compose.onAllNodesWithContentDescription("زيادة").onFirst().performClick()
         compose.waitForIdle()
         shot("sale-filled")
         compose.onNodeWithText("حفظ الفاتورة").assertExists()
@@ -162,28 +143,33 @@ class ScreensTest {
     }
 
     @Test fun waitingRecordsShowInTheSyncPanel() {
-        repo.store.enqueue(OWNER, "payment", buildJsonObject { put("id", "p1"); put("customer_id", "c1"); put("trip_id", TRIP); put("amount", 700); put("created_by", OWNER) })
-        repo.pending.value = repo.store.outboxFor(OWNER)
         show(Screen.Today)
+        repo.store.enqueue(OWNER, "gps", buildJsonObject { put("id", "b5d7526c-e484-49ec-9dc0-3eba8db8a489"); put("trip_id", TRIP); put("lat", 14.53); put("lng", 49.12); put("created_by", OWNER) })
+        compose.runOnUiThread { repo.pending.value = repo.store.outboxFor(OWNER) }
+        compose.waitForIdle()
         compose.onNodeWithText("متصل (1)", substring = true).performClick()
         compose.waitForIdle()
         compose.onNodeWithText("حالة المزامنة").assertExists()
         compose.onNodeWithText("محفوظ على الهاتف").assertExists()
         shot("sync-panel")
+        // The dialog lives in its own window; capture that too.
+        org.robolectric.shadows.ShadowDialog.getLatestDialog()?.window?.let { window ->
+            val bitmap = Bitmap.createBitmap(window.decorView.width, window.decorView.height, Bitmap.Config.ARGB_8888)
+            PixelCopy.request(window, bitmap, {}, Handler(Looper.getMainLooper()))
+            Shadows.shadowOf(Looper.getMainLooper()).idle()
+            File("build/screens/sync-dialog.png").outputStream().use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }
+        }
     }
 
     @Test fun signInScreenRenders() {
-        repo.me.value = null
         compose.setContent { PureIceTheme { CompositionLocalProvider(LocalRepo provides repo) { LoginScreen() } } }
         compose.onNodeWithText("تسجيل الدخول").assertExists()
         compose.onNodeWithText("دخول").performScrollTo().assertExists()
         shot("login")
     }
 
-    /** Manager screens read online only; without a session they must show an error, not crash. */
-    @Test fun managerScreensRenderWithoutAConnection() {
-        repo.me.value = Me(OWNER, null, "المدير", null, listOf("admin"))
-        show(Screen.Admin)
+    @Test fun managerScreensRender() {
+        show(Screen.Admin, "admin")
         val screens = listOf(
             Screen.Admin to "admin", Screen.Trips to "trips", Screen.Trip(TRIP) to "trip", Screen.Closings to "closings",
             Screen.Reports to "reports", Screen.RouteMap to "map", Screen.AdminSetup to "admin-setup", Screen.AdminProducts to "admin-products",

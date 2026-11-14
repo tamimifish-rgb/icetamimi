@@ -1,0 +1,8 @@
+{
+  "name": "web-reference",
+  "private": true,
+  "dependencies": {
+    "@expo-google-fonts/cairo": "*",
+    "lucide-static": "0.575.0"
+  }
+}

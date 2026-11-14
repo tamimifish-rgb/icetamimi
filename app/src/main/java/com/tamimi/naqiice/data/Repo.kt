@@ -68,11 +68,10 @@ class PrefsSessionStore(context: Context) : SessionStore {
 }
 
 /** App-wide state: the signed-in employee, the cached snapshot, the outbox and sync. */
-class Repo(private val context: Context) {
+class Repo(private val context: Context, private val httpClient: okhttp3.OkHttpClient = Api.defaultClient()) {
     val store: LocalStore = SqliteStore(context)
-    val api = Api(PrefsSessionStore(context))
+    val api = Api(PrefsSessionStore(context), httpClient)
     val http get() = httpClient
-    private val httpClient = Api.defaultClient()
     private val engine = SyncEngine(store, ApiRemote(api), { path -> runCatching { File(path).readBytes() }.getOrNull() })
     val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
 
@@ -87,6 +86,8 @@ class Repo(private val context: Context) {
     val changeSupport = MutableStateFlow(false)
     val company = MutableStateFlow(Company.DEFAULT)
     val tracking = MutableStateFlow<TrackingState?>(null)
+    /** "Keep the screen on" switch on the campaign screen (on by default, as on the web). */
+    val keepAwake = MutableStateFlow(true)
     /** Shown on the sign-in screen, e.g. after the server revoked the session. */
     val notice = MutableStateFlow<String?>(null)
 

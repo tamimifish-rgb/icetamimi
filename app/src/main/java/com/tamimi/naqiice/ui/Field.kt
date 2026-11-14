@@ -1,13 +1,21 @@
 package com.tamimi.naqiice.ui
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.size
+import androidx.compose.material3.Icon
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.HorizontalDivider
-import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -49,6 +57,7 @@ private fun requireCampaign(user: Me?, snap: Snapshot): Me {
 
 private val EXPENSE_CATEGORIES = listOf("وقود", "وجبات", "إصلاح الشاحنة", "مواقف/رسوم", "أخرى")
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun ExpensesScreen() {
     val repo = LocalRepo.current
@@ -65,10 +74,16 @@ fun ExpensesScreen() {
     val fuel = category == "وقود"
     val day = snap.day
 
-    Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
+    Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
         PageTitle("المصروفات")
-        EXPENSE_CATEGORIES.chunked(3).forEach { row ->
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) { row.forEach { c -> MidButton(c, outlined = category != c) { category = c } } }
+        // flex flex-wrap gap-2 of rounded-full chips
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            EXPENSE_CATEGORIES.forEach { c ->
+                val on = category == c
+                Box(Modifier.box(100.dp, if (on) Ice.primary else Ice.card, if (on) Ice.primary else Ice.border).tap { category = c }.padding(horizontal = 16.dp, vertical = 8.dp)) {
+                    Text(c, style = T.sm.color(if (on) Ice.onPrimary else Ice.foreground))
+                }
+            }
         }
         Field(amount, { amount = it }, "المبلغ", numeric = true, large = true)
         if (fuel) {
@@ -100,16 +115,14 @@ fun ExpensesScreen() {
                 toast("تم حفظ المصروف")
             }
         }
-        SectionTitle("مصروفات اليوم — ${formatMoney(day.spent)}")
+        Text("مصروفات اليوم — ${formatMoney(day.spent)}", style = T.base.bold)
         if (day.expenses.isEmpty()) Empty("لا توجد مصروفات") else day.expenses.forEach { e ->
-            IceCard {
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                    Column(Modifier.weight(1f)) {
-                        Text(e.str("category") ?: "", fontWeight = FontWeight.Bold, fontSize = 14.sp)
-                        Text("${formatDate(e.str("created_at"))} ${e.str("notes") ?: ""}", fontSize = 12.sp, color = Ice.mutedText)
-                    }
-                    Text(formatMoney(e.num("amount")), fontWeight = FontWeight.Bold, fontSize = 14.sp)
+            Row(Modifier.fillMaxWidth().box(Radius.xl).padding(12.dp), horizontalArrangement = Arrangement.SpaceBetween) {
+                Column(Modifier.weight(1f)) {
+                    Text(e.str("category") ?: "", style = T.sm.bold)
+                    Text("${formatDate(e.str("created_at"))} ${e.str("notes") ?: ""}", style = T.xs.muted)
                 }
+                Text(formatMoney(e.num("amount")), style = T.sm.bold)
             }
         }
     }
@@ -130,10 +143,13 @@ fun MaintenanceScreen() {
     var date by remember { mutableStateOf(adenDay()) }
     var photo by remember { mutableStateOf<String?>(null) }
 
-    Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
+    Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
         PageTitle("صيانة الشاحنة")
         Field(title, { title = it }, "وصف العمل (مثال: تغيير زيت)")
-        Field(date, { date = it.filter { ch -> ch.isDigit() || ch == '-' }.take(10) }, "تاريخ الصيانة (سنة-شهر-يوم)", ltr = true)
+        Column {
+            Text("تاريخ الصيانة", style = T.sm.muted)
+            DateField(date) { date = it }
+        }
         Field(cost, { cost = it }, "التكلفة", numeric = true)
         PhotoPick("صورة الفاتورة (اختياري)", photo) { photo = it }
         Field(notes, { notes = it }, "ملاحظات")
@@ -182,7 +198,7 @@ fun FreezerActionScreen(forCustomer: String?) {
 
     if (snap.ref == null) { Empty("جارٍ التحميل…"); return }
     if (picking) {
-        Column { PageTitle("اختر العميل"); CustomerPicker { customerId = it; picking = false } }
+        Column(verticalArrangement = Arrangement.spacedBy(16.dp)) { PageTitle("اختر العميل"); CustomerPicker { customerId = it; picking = false } }
         return
     }
     val needsCustomer = type == "place" || type == "move"
@@ -190,17 +206,28 @@ fun FreezerActionScreen(forCustomer: String?) {
         when (type) { "place" -> f.str("status") == "warehouse"; "remove", "move" -> f.str("status") == "placed"; else -> true }
     }.filter { forCustomer == null || type == "place" || it.str("customer_id") == forCustomer }
 
-    Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
+    Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
         PageTitle("حركة ثلاجة")
-        FREEZER_ACTIONS.chunked(2).forEach { row ->
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                row.forEach { (value, label) -> MidButton(label, Modifier.weight(1f), outlined = type != value) { type = value; freezerId = null } }
+        // grid grid-cols-2 gap-2 of rounded-xl bordered choices
+        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            FREEZER_ACTIONS.chunked(2).forEach { row ->
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    row.forEach { (value, label) ->
+                        val on = type == value
+                        Box(Modifier.weight(1f).box(Radius.xl, if (on) Ice.primary else Ice.card, if (on) Ice.primary else Ice.border).tap { type = value; freezerId = null }.padding(12.dp), contentAlignment = Alignment.Center) {
+                            Text(label, style = T.sm.medium.color(if (on) Ice.onPrimary else Ice.foreground))
+                        }
+                    }
+                    if (row.size == 1) Spacer(Modifier.weight(1f))
+                }
             }
         }
         Picker("الثلاجة", freezers.map { f ->
-            f.str("id") to listOfNotNull(f.str("serial"), f.obj("freezer_models")?.str("name"), f.str("customer_id")?.let { snap.customer(it)?.str("name") }).joinToString(" · ")
+            f.str("id") to "${f.str("serial") ?: ""} · ${f.obj("freezer_models")?.str("name") ?: ""} " + (f.str("customer_id")?.let { "· ${snap.customer(it)?.str("name") ?: ""}" } ?: "")
         }, freezerId) { freezerId = it }
-        if (needsCustomer) MidButton(snap.customer(customerId)?.str("name")?.let { "العميل: $it" } ?: "اختر العميل", Modifier.fillMaxWidth(), outlined = true) { picking = true }
+        if (needsCustomer) Btn({ picking = true }, Modifier.fillMaxWidth(), Variant.Outline, height = 48.dp) {
+            Text(snap.customer(customerId)?.str("name")?.let { "العميل: $it" } ?: "اختر العميل", Modifier.weight(1f))
+        }
         Field(notes, { notes = it }, "ملاحظات / الحالة")
         BigButton("حفظ", enabled = !operation.busy) {
             operation.run { id ->
@@ -264,13 +291,13 @@ fun ClosingScreen() {
         nav.back()
     }
 
-    Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
+    Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
         PageTitle("إغلاق الحملة")
-        if (waitingChanges > 0) Banner(Ice.warning.copy(alpha = 0.3f)) {
-            Text("لديك $waitingChanges طلب إلغاء أو تعديل فاتورة بانتظار المشرف. لن يُقبل الإغلاق قبل مراجعته.", fontSize = 14.sp)
+        if (waitingChanges > 0) Banner(Ice.warning.copy(alpha = 0.3f), Modifier.tap { nav.go(Screen.InvoiceChanges) }) {
+            Text("لديك $waitingChanges طلب إلغاء أو تعديل فاتورة بانتظار المشرف. لن يُقبل الإغلاق قبل مراجعته.")
         }
         if (flagged) Banner(Ice.destructive.copy(alpha = 0.1f)) {
-            Text("أعاد المشرف الإغلاق للمراجعة" + (snap.closing?.str("review_note")?.let { ": $it" } ?: ""), fontSize = 14.sp)
+            Text("أعاد المشرف الإغلاق للمراجعة" + (snap.closing?.str("review_note")?.let { ": $it" } ?: ""))
         }
         StatGrid(listOf(
             Triple("مبيعات نقدية", formatMoney(day.cashSales), Ice.foreground),
@@ -281,21 +308,22 @@ fun ClosingScreen() {
         ))
         Column {
             SectionTitle("المتبقي في الشاحنة (حسب النظام)")
-            IceCard {
-                Column {
-                    snap.variants.forEachIndexed { index, v ->
-                        if (index > 0) HorizontalDivider(color = Ice.border)
-                        LineItem(v.str("name") ?: "", formatNum(snap.stockOf(v.str("id") ?: "")))
+            ListCard {
+                snap.variants.forEachIndexed { index, v ->
+                    if (index > 0) Divider()
+                    Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 10.dp), horizontalArrangement = Arrangement.SpaceBetween) {
+                        Text(v.str("name") ?: "", style = T.sm)
+                        Text(formatNum(snap.stockOf(v.str("id") ?: "")), style = T.sm.bold)
                     }
                 }
             }
-            Text("يسجّل المشرف المرتجع والتالف عند وصولك للمصنع.", fontSize = 12.sp, color = Ice.mutedText, modifier = Modifier.padding(top = 4.dp))
+            Text("يسجّل المشرف المرتجع والتالف عند وصولك للمصنع.", style = T.xs.muted, modifier = Modifier.padding(top = 4.dp))
         }
         Field(counted, { counted = it }, "النقد المعدود فعلياً", numeric = true, large = true)
         if (counted.isNotEmpty()) Banner(if (difference == 0.0) Ice.success.copy(alpha = 0.15f) else Ice.destructive.copy(alpha = 0.1f)) {
             Text(
                 "الفرق: ${formatMoney(difference)} " + if (difference < 0) "(عجز)" else if (difference > 0) "(زيادة)" else "✓",
-                Modifier.fillMaxWidth(), fontWeight = FontWeight.Bold, textAlign = TextAlign.Center, color = if (difference == 0.0) Ice.success else Ice.destructive,
+                Modifier.fillMaxWidth(), style = T.base.bold.color(if (difference == 0.0) Ice.success else Ice.destructive), textAlign = TextAlign.Center,
             )
         }
         Field(notes, { notes = it }, "ملاحظات")
@@ -305,7 +333,27 @@ fun ClosingScreen() {
     if (confirm) AlertDialog(
         onDismissRequest = { confirm = false },
         text = { Text("بعد إرسال الإغلاق يتوقف البيع في هذه الحملة. متابعة؟") },
-        confirmButton = { TextButton({ confirm = false; send() }) { Text("إرسال") } },
+        confirmButton = { TextButton({ confirm = false; send() }) { Text("موافق") } },
         dismissButton = { TextButton({ confirm = false }) { Text("إلغاء") } },
     )
+}
+
+/** The web's `<input type="date" class="h-12">`: shows the day and opens the system date picker. */
+@Composable
+fun DateField(value: String, max: String = adenDay(), onChange: (String) -> Unit) {
+    val context = LocalContext.current
+    val parts = value.split('-').mapNotNull { it.toIntOrNull() }
+    Row(
+        Modifier.fillMaxWidth().height(48.dp).smallShadow(Radius.md).box(Radius.md, null, Ice.input).tap {
+            val (y, m, d) = if (parts.size == 3) parts else adenDay().split('-').map { it.toInt() }
+            android.app.DatePickerDialog(context, { _, year, month, day -> onChange("%04d-%02d-%02d".format(java.util.Locale.US, year, month + 1, day)) }, y, m - 1, d).apply {
+                com.tamimi.naqiice.core.parseIso("${max}T23:59:59Z")?.let { datePicker.maxDate = it }
+            }.show()
+        }.padding(horizontal = 12.dp),
+        // A browser lays a date input out left-to-right: the date, then the calendar icon.
+        verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp, Alignment.End),
+    ) {
+        Icon(Lucide.Calendar, null, Modifier.size(16.dp))
+        Text(if (parts.size == 3) "%02d/%02d/%04d".format(java.util.Locale.US, parts[2], parts[1], parts[0]) else "", style = T.base.ltr)
+    }
 }

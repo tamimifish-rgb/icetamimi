@@ -1,0 +1,245 @@
+{
+ "owner": "11111111-1111-1111-1111-111111111111",
+ "trip": "33333333-3333-3333-3333-333333333333",
+ "name": "سالم الموزع",
+ "tables": {
+  "profiles": [
+   {
+    "id": "11111111-1111-1111-1111-111111111111",
+    "full_name": "سالم الموزع",
+    "username": "salem",
+    "truck_id": "t1",
+    "active": true,
+    "pin_enabled": true
+   }
+  ],
+  "product_variants": [
+   {
+    "id": "v1",
+    "product_id": "p1",
+    "name": "ثلج مجروش ٥ كجم",
+    "unit": "كيس",
+    "price": 500,
+    "active": true,
+    "sort": 1,
+    "products": {
+     "name": "ثلج مجروش",
+     "active": true,
+     "sort": 1
+    }
+   },
+   {
+    "id": "v2",
+    "product_id": "p2",
+    "name": "قالب ثلج",
+    "unit": "قالب",
+    "price": 1500,
+    "active": true,
+    "sort": 2,
+    "products": {
+     "name": "قوالب",
+     "active": true,
+     "sort": 2
+    }
+   }
+  ],
+  "regions": [
+   {
+    "id": "r1",
+    "name": "المكلا",
+    "active": true,
+    "sort": 1
+   },
+   {
+    "id": "r2",
+    "name": "فوة",
+    "active": true,
+    "sort": 2
+   }
+  ],
+  "customers": [
+   {
+    "id": "c1",
+    "name": "بقالة النور",
+    "phone": "771234567",
+    "region_id": "r1",
+    "credit_limit": 0,
+    "active": true,
+    "truck_id": "t1",
+    "location_notes": null,
+    "lat": null,
+    "lng": null
+   },
+   {
+    "id": "c2",
+    "name": "مطعم البحر",
+    "phone": null,
+    "region_id": "r2",
+    "credit_limit": 5000,
+    "active": true,
+    "truck_id": null,
+    "location_notes": null,
+    "lat": null,
+    "lng": null
+   }
+  ],
+  "customer_prices": [
+   {
+    "customer_id": "c1",
+    "variant_id": "v1",
+    "price": 450
+   }
+  ],
+  "freezers": [
+   {
+    "id": "f1",
+    "serial": "FZ-001",
+    "status": "placed",
+    "customer_id": "c1",
+    "condition": null,
+    "freezer_models": {
+     "name": "٣٠٠ لتر"
+    }
+   },
+   {
+    "id": "f2",
+    "serial": "FZ-002",
+    "status": "warehouse",
+    "customer_id": null,
+    "condition": null,
+    "freezer_models": null
+   }
+  ],
+  "freezer_models": [
+   {
+    "id": "m1",
+    "name": "٣٠٠ لتر"
+   }
+  ],
+  "trucks": [
+   {
+    "id": "t1",
+    "code": "T1",
+    "name": "شاحنة ١",
+    "plate": "1234",
+    "active": true
+   }
+  ],
+  "trips": [
+   {
+    "id": "33333333-3333-3333-3333-333333333333",
+    "truck_id": "t1",
+    "distributor_id": "11111111-1111-1111-1111-111111111111",
+    "status": "open",
+    "trip_date": "2026-11-14",
+    "loading_approved_at": "2026-11-14T05:00:00+00:00",
+    "created_at": "2026-11-14T04:00:00+00:00"
+   }
+  ],
+  "trip_loads": [
+   {
+    "id": "l1",
+    "trip_id": "33333333-3333-3333-3333-333333333333",
+    "variant_id": "v1",
+    "qty": 30,
+    "kind": "load",
+    "approved_at": null
+   }
+  ],
+  "sales": [
+   {
+    "id": "s0",
+    "invoice_no": "T1-20261114-abc",
+    "trip_id": "33333333-3333-3333-3333-333333333333",
+    "truck_id": "t1",
+    "customer_id": "c1",
+    "total": 4500,
+    "cash_paid": 2500,
+    "credit_amount": 2000,
+    "lat": 14.53,
+    "lng": 49.12,
+    "created_by": "11111111-1111-1111-1111-111111111111",
+    "created_at": "2026-11-14T06:00:00+00:00",
+    "sale_items": [
+     {
+      "id": "i0",
+      "sale_id": "s0",
+      "variant_id": "v1",
+      "qty": 10,
+      "unit_price": 450,
+      "line_total": 4500
+     }
+    ]
+   }
+  ],
+  "payments": [],
+  "closings": []
+ },
+ "snapshot": {
+  "includedIds": [
+   "s0"
+  ],
+  "balances": [
+   {
+    "customer_id": "c1",
+    "balance": 2000,
+    "month_sales": 40000,
+    "total_sales": 90000
+   }
+  ],
+  "stock": [
+   {
+    "variant_id": "v1",
+    "loaded": 100,
+    "sold": 10,
+    "returned": 0,
+    "damaged": 0
+   },
+   {
+    "variant_id": "v2",
+    "loaded": 20,
+    "sold": 20,
+    "returned": 0,
+    "damaged": 0
+   }
+  ],
+  "sales": [
+   {
+    "id": "s0",
+    "invoice_no": "T1-20261114-abc",
+    "trip_id": "33333333-3333-3333-3333-333333333333",
+    "truck_id": "t1",
+    "customer_id": "c1",
+    "total": 4500,
+    "cash_paid": 2500,
+    "credit_amount": 2000,
+    "lat": 14.53,
+    "lng": 49.12,
+    "created_by": "11111111-1111-1111-1111-111111111111",
+    "created_at": "2026-11-14T06:00:00+00:00",
+    "sale_items": [
+     {
+      "id": "i0",
+      "sale_id": "s0",
+      "variant_id": "v1",
+      "qty": 10,
+      "unit_price": 450,
+      "line_total": 4500
+     }
+    ]
+   }
+  ],
+  "payments": [],
+  "expenses": [
+   {
+    "id": "e0",
+    "category": "وقود",
+    "amount": 3000,
+    "notes": null,
+    "created_at": "2026-11-14T07:00:00+00:00"
+   }
+  ],
+  "closing": null
+ },
+ "rpc": {}
+}

@@ -38,13 +38,16 @@ import com.tamimi.naqiice.ui.Nav
 import com.tamimi.naqiice.ui.PureIceTheme
 import com.tamimi.naqiice.ui.Screen
 
-class PureIceApp : Application() {
+open class PureIceApp : Application() {
     lateinit var repo: Repo
         private set
 
+    /** Screen tests replace the network with a fixture here. */
+    protected open fun createRepo(): Repo = Repo(this)
+
     override fun onCreate() {
         super.onCreate()
-        repo = Repo(this)
+        repo = createRepo()
         repo.trackingController = { TrackingService.update(this, it) }
         repo.start()
     }
