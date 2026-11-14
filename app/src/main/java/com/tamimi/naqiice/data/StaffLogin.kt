@@ -36,27 +36,36 @@ object StaffLogin {
     data class Tokens(val accessToken: String, val refreshToken: String)
 
     suspend fun login(http: OkHttpClient, username: String, credential: String): Tokens = withContext(Dispatchers.IO) {
-        val request = Request.Builder()
-            .url("${Backend.SITE}/_serverFn/$FUNCTION_ID")
-            .post(encodeRequest(normalizeUsername(username), credential).toString().toRequestBody("application/json".toMediaType()))
-            .header("x-tsr-serverFn", "true")
-            .header("accept", "application/x-tss-framed, application/x-ndjson, application/json")
-            .header("x-pureice-backend", Backend.MODE)
-            // The function only accepts same-origin callers.
-            .header("Origin", Backend.SITE)
-            .build()
+        val request = request(FUNCTION_ID, encodeRequest(normalizeUsername(username), credential), null)
         http.newCall(request).execute().use { response ->
             val text = response.body?.string() ?: ""
             parseResponse(response.code, text)
         }
     }
 
-    fun parseResponse(status: Int, text: String): Tokens {
+    /** The server-function call shared by every hosted function (see ServerFn). */
+    internal fun request(functionId: String, body: JsonObject, bearer: String?): Request = Request.Builder()
+        .url("${Backend.SITE}/_serverFn/$functionId")
+        .post(body.toString().toRequestBody("application/json".toMediaType()))
+        .header("x-tsr-serverFn", "true")
+        .header("accept", "application/x-tss-framed, application/x-ndjson, application/json")
+        .header("x-pureice-backend", Backend.MODE)
+        // The function only accepts same-origin callers.
+        .header("Origin", Backend.SITE)
+        .apply { if (bearer != null) header("Authorization", "Bearer $bearer") }
+        .build()
+
+    /** The decoded `{ result, error, context }` reply, or null when it is unreadable. */
+    internal fun decodeReply(text: String): Any? {
         // A framed response carries one JSON document per line; the first is the result.
         val first = text.lineSequence().firstOrNull { it.isNotBlank() }?.trim() ?: ""
         val start = first.indexOf('{')
         val root = runCatching { JSON.parseToJsonElement(if (start > 0) first.substring(start) else first) as JsonObject }.getOrNull()
-        val decoded = root?.let { decode(it) }
+        return root?.let { decode(it) }
+    }
+
+    fun parseResponse(status: Int, text: String): Tokens {
+        val decoded = decodeReply(text)
         val error = (decoded as? Map<*, *>)?.get("error") ?: (decoded as? ServerError)
         if (error is ServerError) throw ApiError(status, null, error.message.ifBlank { LOGIN_FAILED })
         val result = (decoded as? Map<*, *>)?.get("result") as? Map<*, *>
@@ -76,9 +85,9 @@ object StaffLogin {
     fun encodeRequest(username: String, credential: String): JsonObject =
         objectNode(0, listOf("data" to objectNode(1, listOf("username" to stringNode(username), "credential" to stringNode(credential)))))
 
-    private fun stringNode(value: String) = buildJsonObject { put("t", 1); put("s", escape(value)) }
+    internal fun stringNode(value: String) = buildJsonObject { put("t", 1); put("s", escape(value)) }
 
-    private fun objectNode(index: Int, entries: List<Pair<String, JsonElement>>) = buildJsonObject {
+    internal fun objectNode(index: Int, entries: List<Pair<String, JsonElement>>) = buildJsonObject {
         put("t", 10); put("i", index)
         put("p", buildJsonObject {
             put("k", buildJsonArray { entries.forEach { add(JsonPrimitive(it.first)) } })
@@ -142,6 +151,6 @@ object StaffLogin {
         return sb.toString()
     }
 
-    private fun sha256(text: String): String =
+    internal fun sha256(text: String): String =
         MessageDigest.getInstance("SHA-256").digest(text.toByteArray()).joinToString("") { "%02x".format(it) }
 }
