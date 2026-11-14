@@ -1,5 +1,11 @@
 package com.tamimi.naqiice.core
 
+import java.math.BigDecimal
+import java.math.RoundingMode
+import kotlin.math.abs
+import kotlin.math.ceil
+import kotlin.math.floor
+import kotlin.math.log10
 import kotlin.math.max
 import kotlin.math.min
 
@@ -206,5 +212,92 @@ fun reportTable(d: ReportData, tab: String, from: String, to: String, today: Str
             for (dep in d.deposits) deposits[name(dep)] = (deposits[name(dep)] ?: 0.0) + dep.num("amount")
             ExportTable(title, headers + "إيداعات", rows.map { listOf(it.name, it.value, deposits[it.name] ?: 0.0) })
         }
+    }
+}
+
+// ---- chart axis and table columns -----------------------------------------------------
+
+/**
+ * The value-axis ticks of the web chart (recharts' `getNiceTickValues`, as its bar chart
+ * calls it for the domain `[0, largest value]` with five ticks): a step that is a round
+ * multiple of 5% of its order of magnitude, widened until [count] ticks cover the range.
+ */
+fun niceTicks(low: Double, high: Double, count: Int = 5): List<Double> {
+    val (lo, hi) = if (low > high) high to low else low to high
+    if (!lo.isFinite() || !hi.isFinite()) return listOf(0.0)
+    if (lo == hi) return singleValueTicks(lo, count)
+    val min = BigDecimal.valueOf(lo)
+    val max = BigDecimal.valueOf(hi)
+    var correction = 0
+    while (true) {
+        val rough = (max - min).divide(BigDecimal(count - 1), 30, RoundingMode.HALF_UP)
+        val digits = floor(log10(rough.toDouble())).toInt() + 1
+        val magnitude = if (digits >= 0) BigDecimal.TEN.pow(digits) else BigDecimal.ONE.divide(BigDecimal.TEN.pow(-digits))
+        val unit = if (digits != 1) BigDecimal("0.05") else BigDecimal("0.1")
+        val ratio = rough.divide(magnitude, 30, RoundingMode.HALF_UP).divide(unit, 20, RoundingMode.HALF_UP)
+        val step = (BigDecimal(ceil(ratio.toDouble()).toLong()) + BigDecimal(correction)) * unit * magnitude
+        // Zero is a tick whenever it lies inside the range.
+        val middle = if (min.signum() <= 0 && max.signum() >= 0) BigDecimal.ZERO else (min + max).divide(BigDecimal(2)).let { it - it.remainder(step) }
+        var below = ceil((middle - min).divide(step, 20, RoundingMode.HALF_UP).toDouble()).toInt()
+        var above = ceil((max - middle).divide(step, 20, RoundingMode.HALF_UP).toDouble()).toInt()
+        val total = below + above + 1
+        if (total > count) { correction++; continue }
+        if (total < count) { if (hi > 0) above += count - total else below += count - total }
+        return (-below..above).map { (middle + step * BigDecimal(it)).toDouble() }
+    }
+}
+
+private fun singleValueTicks(value: Double, count: Int): List<Double> {
+    var step = 1.0
+    val middle = when {
+        value == 0.0 -> floor((count - 1) / 2.0)
+        value == Math.rint(value) -> value
+        abs(value) < 1 -> { step = Math.pow(10.0, floor(log10(abs(value)))); floor(value / step) * step }
+        else -> floor(value)
+    }
+    val index = (count - 1) / 2
+    return List(count) { BigDecimal.valueOf(middle).add(BigDecimal.valueOf(step).multiply(BigDecimal(it - index))).toDouble() }
+}
+
+/** A tick value as JavaScript prints a number: no trailing zeros, no exponent at these sizes. */
+fun tickLabel(value: Double): String = BigDecimal.valueOf(value).stripTrailingZeros().toPlainString().let { if (it == "-0") "0" else it }
+
+/**
+ * Where the web chart draws each axis label, or null where it leaves the tick out (recharts'
+ * default `interval="preserveEnd"`). Walking back from the last tick, a label is kept when
+ * it fits between [start] and the label kept after it, [gap] apart; the last label is first
+ * moved back inside [end] when it would stick out. [ticks] run from [start] towards [end]
+ * (in either direction) and share one unit with [sizes], the labels' extent along the axis.
+ */
+fun tickPlaces(ticks: List<Float>, sizes: List<Float>, start: Float, end: Float, gap: Float = 5f): List<Float?> {
+    val sign = if (ticks.size >= 2 && ticks[1] < ticks[0]) -1 else 1
+    val places = MutableList<Float?>(ticks.size) { null }
+    var limit = end
+    for (i in ticks.indices.reversed()) {
+        val half = sign * sizes[i] / 2
+        var at = ticks[i]
+        if (i == ticks.lastIndex) { val over = sign * (at + half - limit); if (over > 0) at -= over * sign }
+        if (sign * at < sign * start || sign * at > sign * limit) continue
+        if (sign * (at - half - start) < 0 || sign * (at + half - limit) > 0) continue
+        places[i] = at
+        limit = at - half - sign * gap
+    }
+    return places
+}
+
+/**
+ * Column widths of an HTML table with automatic layout, as browsers compute them: with room
+ * to spare every column grows in proportion to its widest content; in between, each gets its
+ * narrowest width plus a share of the rest; with less than that the table is wider than
+ * [available] and scrolls.
+ */
+fun tableColumnWidths(narrowest: List<Float>, widest: List<Float>, available: Float): List<Float> {
+    val least = narrowest.sum()
+    val most = widest.sum()
+    return when {
+        most <= 0f -> List(widest.size) { available / widest.size.coerceAtLeast(1) }
+        available >= most -> widest.map { it * available / most }
+        available > least -> narrowest.indices.map { narrowest[it] + (widest[it] - narrowest[it]) * (available - least) / (most - least) }
+        else -> narrowest
     }
 }
