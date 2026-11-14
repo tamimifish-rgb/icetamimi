@@ -77,8 +77,12 @@ const weights = { 400: '400Regular/Cairo_400Regular.ttf', 500: '500Medium/Cairo_
     ['/expenses', 'expenses'], ['/maintenance', 'maintenance'], ['/freezer-action', 'freezer'], ['/closing', 'closing'], ['/more', 'more'],
     ['/customers/new', 'new-customer'], ['/invoice/s0', 'invoice'],
   ];
+  // steps.<area>.js files export `async (page, name, shot) => {}`: extra states (dialogs,
+  // tabs, filled forms) to capture after a route's first screenshot.
+  const hooks = fs.readdirSync(__dirname).filter((f) => /^steps\..+\.js$/.test(f)).sort().map((f) => require(path.join(__dirname, f)));
   for (const [route, name] of routes) {
     await go(route, name);
+    for (const hook of hooks) await hook(page, name, shot);
     if (name === 'sale') { const plus = page.getByLabel('زيادة').first(); await plus.click(); await plus.click(); await shot('sale-filled'); }
     if (name === 'today') { await page.getByLabel('حالة المزامنة').click().catch(() => {}); await shot('sync-panel'); await page.keyboard.press('Escape'); }
     if (process.env.SCROLL) { await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight)); await shot(name + '-bottom'); }

@@ -9,6 +9,8 @@ Keeps the Android screens visually identical to the web app.
   are appended (rows may carry embedded objects exactly as a query's `select` would return).
 - `app/src/test/.../ScreenHarness.kt` and its subclasses render the native screens with the same fixture into
   `app/build/screens/`.
+- `steps.<area>.js` (optional) exports `async (page, name, shot) => {}` to capture more states
+  of a route (open a dialog, switch a tab) after its first screenshot.
 - `rows.py <name…>` prints the vertical position of every block in both screenshots and the
   difference in dp; `pair.py <name…>` writes side-by-side images; `sheet.py` joins images.
 - `gen_icons.py` regenerates `ui/Lucide.kt` from the Lucide icons the web source imports.
