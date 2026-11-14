@@ -20,6 +20,14 @@ class StaffLoginTest {
         )
     }
 
+    /** The exact body the web client posts (seroval toJSONAsync), including the envelope. */
+    @Test fun bodyMatchesWebClient() {
+        assertEquals(
+            """{"t":{"t":10,"i":0,"p":{"k":["data"],"v":[{"t":10,"i":1,"p":{"k":["username","credential"],"v":[{"t":1,"s":"ali"},{"t":1,"s":"12\\x3C3\\\"456"}]},"o":0}]},"o":0},"f":127,"m":[]}""",
+            StaffLogin.envelope(StaffLogin.encodeRequest("ali", "12<3\"456")).toString(),
+        )
+    }
+
     @Test fun escapesLegacyPasswords() {
         assertEquals("a\\\"b\\\\c\\x3Cd", StaffLogin.escape("a\"b\\c<d"))
         assertEquals("a\"b\\c<d\n", StaffLogin.unescape("a\\\"b\\\\c\\x3Cd\\n"))

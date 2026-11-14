@@ -46,7 +46,7 @@ object StaffLogin {
     /** The server-function call shared by every hosted function (see ServerFn). */
     internal fun request(functionId: String, body: JsonObject, bearer: String?): Request = Request.Builder()
         .url("${Backend.SITE}/_serverFn/$functionId")
-        .post(body.toString().toRequestBody("application/json".toMediaType()))
+        .post(envelope(body).toString().toRequestBody("application/json".toMediaType()))
         .header("x-tsr-serverFn", "true")
         .header("accept", "application/x-tss-framed, application/x-ndjson, application/json")
         .header("x-pureice-backend", Backend.MODE)
@@ -54,6 +54,14 @@ object StaffLogin {
         .header("Origin", Backend.SITE)
         .apply { if (bearer != null) header("Authorization", "Bearer $bearer") }
         .build()
+
+    /**
+     * Requests travel in the serializer's document form `{ t: <nodes>, f: <features>, m: [] }`;
+     * replies come back as bare nodes. Sending bare nodes makes the server see no input.
+     */
+    internal fun envelope(nodes: JsonObject): JsonObject = buildJsonObject {
+        put("t", nodes); put("f", 127); put("m", buildJsonArray { })
+    }
 
     /** The decoded `{ result, error, context }` reply, or null when it is unreadable. */
     internal fun decodeReply(text: String): Any? {
