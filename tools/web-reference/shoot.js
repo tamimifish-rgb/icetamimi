@@ -2,7 +2,13 @@
 // and saves reference screenshots. usage: node shoot.js <outDir> [role]   (see README.md)
 const { chromium } = require(process.env.PLAYWRIGHT || 'playwright');
 const fs = require('fs'); const path = require('path');
-const fx = JSON.parse(fs.readFileSync(path.join(__dirname, process.env.FIXTURE || 'fixture.json'), 'utf8'));
+// fixture.json plus every fixture.<area>.json: table rows are appended, rpc results merged.
+const fx = JSON.parse(fs.readFileSync(path.join(__dirname, 'fixture.json'), 'utf8'));
+for (const file of fs.readdirSync(__dirname).filter((f) => /^fixture\..+\.json$/.test(f)).sort()) {
+  const extra = JSON.parse(fs.readFileSync(path.join(__dirname, file), 'utf8'));
+  for (const [name, rows] of Object.entries(extra.tables || {})) fx.tables[name] = (fx.tables[name] || []).concat(rows);
+  fx.rpc = { ...(fx.rpc || {}), ...(extra.rpc || {}) };
+}
 fx.OWNER = fx.owner; fx.TRIP = fx.trip;
 const SITE = 'https://naqi-ice-tamimi.lovable.app';
 const out = process.argv[2] || 'web'; const role = process.argv[3] || 'distributor';

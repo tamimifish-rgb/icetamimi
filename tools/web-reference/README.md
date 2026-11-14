@@ -5,7 +5,9 @@ Keeps the Android screens visually identical to the web app.
 - `shoot.js` renders the published web app in headless Chromium with a mocked backend
   (`fixture.json`; no request reaches the real backend, nobody is signed in) and saves one
   screenshot per route at 411×891 dp, 2× — the same size the Android screen tests render.
-- `app/src/test/.../ScreensTest.kt` renders the native screens with the same fixture into
+- Sample data: `fixture.json`, plus optional `fixture.<area>.json` overlays whose table rows
+  are appended (rows may carry embedded objects exactly as a query's `select` would return).
+- `app/src/test/.../ScreenHarness.kt` and its subclasses render the native screens with the same fixture into
   `app/build/screens/`.
 - `rows.py <name…>` prints the vertical position of every block in both screenshots and the
   difference in dp; `pair.py <name…>` writes side-by-side images; `sheet.py` joins images.

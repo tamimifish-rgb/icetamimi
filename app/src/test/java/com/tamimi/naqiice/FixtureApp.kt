@@ -43,7 +43,18 @@ class Fixture(private val data: JsonObject) : Interceptor {
     companion object {
         /** distributor, supervisor or admin; set before the activity starts. */
         @Volatile var role = "distributor"
-        fun load(): JsonObject = parseObject(File("../tools/web-reference/fixture.json").readText())
+        /** fixture.json plus every fixture.<area>.json: table rows are appended, rpc results merged. */
+        fun load(): JsonObject {
+            val files = File("../tools/web-reference").listFiles { f -> f.name.startsWith("fixture") && f.name.endsWith(".json") }!!.sortedBy { it.name }
+            var merged = parseObject(files.first { it.name == "fixture.json" }.readText())
+            for (file in files.filter { it.name != "fixture.json" }) {
+                val extra = parseObject(file.readText())
+                val tables = merged.obj("tables")!!.toMutableMap()
+                extra.obj("tables")?.forEach { (name, rows) -> tables[name] = JsonArray((tables[name].asRows()) + rows.asRows()) }
+                merged = merged.with("tables" to JsonObject(tables), "rpc" to JsonObject((merged.obj("rpc") ?: JsonObject(emptyMap())) + (extra.obj("rpc") ?: JsonObject(emptyMap()))))
+            }
+            return merged
+        }
     }
 
     private fun tables(): Map<String, List<Row>> {
