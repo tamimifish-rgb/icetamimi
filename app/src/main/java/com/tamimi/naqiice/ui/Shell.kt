@@ -97,7 +97,7 @@ fun LoginScreen() {
             Text("نظام إدارة التوزيع — المكلا", color = Ice.onPrimary.copy(alpha = 0.8f), fontSize = 14.sp)
         }
         Surface(Modifier.fillMaxSize(), shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp), color = Ice.card) {
-            Column(Modifier.verticalScroll(rememberScrollState()).padding(24.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+            Column(Modifier.verticalScroll(rememberScrollState()).windowInsetsPadding(WindowInsets.navigationBars).padding(24.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
                 Text("تسجيل الدخول", fontSize = 18.sp, fontWeight = FontWeight.Bold)
                 notice?.let { Banner(Ice.warning.copy(alpha = 0.25f)) { Text(it, fontSize = 14.sp) } }
                 Field(username, { username = it }, if (legacy) "اسم المستخدم أو البريد السابق" else "اسم المستخدم / رمز الموظف", ltr = true, keyboard = KeyboardType.Email)
@@ -195,6 +195,7 @@ fun AppShell(me: Me) {
                 }
             }
         }
+        if (items.isEmpty()) Spacer(Modifier.windowInsetsPadding(WindowInsets.navigationBars))
         if (items.isNotEmpty()) {
             HorizontalDivider(color = Ice.border)
             Row(Modifier.fillMaxWidth().background(Ice.card).windowInsetsPadding(WindowInsets.navigationBars)) {
