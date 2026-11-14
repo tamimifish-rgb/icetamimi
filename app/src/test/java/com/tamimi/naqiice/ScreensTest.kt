@@ -10,6 +10,7 @@ import android.os.Handler
 import android.os.Looper
 import android.view.PixelCopy
 import androidx.compose.ui.test.onAllNodesWithContentDescription
+import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onFirst
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
@@ -54,6 +55,9 @@ class ScreensTest : ScreenHarness() {
         compose.onNodeWithText("مطعم البحر").assertExists()
 
         open(Screen.Customer("c1"), "customer")
+        // The history is read online; shoot again once it has arrived.
+        compose.waitUntil(30_000) { pump(); compose.onAllNodesWithText("فاتورة T1-20261114-abc").fetchSemanticsNodes().isNotEmpty() }
+        shot("customer")
         compose.onNodeWithText("الدين الحالي").assertExists()
 
         open(Screen.Sale("c1"), "sale")

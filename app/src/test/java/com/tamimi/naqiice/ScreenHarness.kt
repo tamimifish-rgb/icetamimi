@@ -52,6 +52,14 @@ const val FX_TRIP = "33333333-3333-3333-3333-333333333333"
 @Config(sdk = [34], qualifiers = "ar-rYE-w411dp-h891dp-xhdpi", application = FixtureApp::class)
 abstract class ScreenHarness {
     @get:Rule val compose = createAndroidComposeRule<ComponentActivity>()
+    /** On a failure, saves what was on screen as `failed-<test>.png` and prints the app state. */
+    @get:Rule(order = 0) val onFailure = object : org.junit.rules.TestWatcher() {
+        override fun failed(e: Throwable, description: org.junit.runner.Description) {
+            println("FAILED-STATE ${description.methodName}: me=${repo.me.value?.primaryRole} ref=${repo.ref.value != null} syncing=${repo.syncing.value} online=${repo.online.value} error=${repo.lastError.value}")
+            runCatching { shot("failed-${description.methodName}") }
+        }
+    }
+
     protected val app get() = ApplicationProvider.getApplicationContext<FixtureApp>()
     protected val repo get() = app.repo
     protected lateinit var nav: Nav

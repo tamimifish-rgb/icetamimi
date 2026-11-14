@@ -5,7 +5,10 @@ It is a rewrite of the web app in `naqi-ice-tamimi` against the **same backend**
 same database, the same server rules and the same staff accounts. Nothing on the
 server was changed for it.
 
-The whole interface is Arabic and right-to-left.
+The whole interface is Arabic and right-to-left, and it is laid out to look the same as
+the web app: same font (Cairo), icons, colours, spacing and screens. `tools/web-reference`
+renders the published web app and the Android screens on the same sample data and
+compares them block by block; run it after any UI change (see its README and PARITY.md).
 
 ## What is in the app
 
@@ -50,7 +53,7 @@ Or open the folder in Android Studio and run the `app` configuration.
 ### Release and updating the installed app
 
 The package is `com.tamimi.naqiice`, the same as the earlier builds, with
-`versionCode 202`. To install it **over** the existing app it must be signed with the
+`versionCode 203`. To install it **over** the existing app it must be signed with the
 same owner keystore (Android Studio → Build → Generate Signed App Bundle / APK). Keep
 the keystore and its passwords outside this repository.
 
@@ -67,7 +70,8 @@ app/src/main/java/com/tamimi/naqiice/
              Sync (upload + snapshot + reconciliation), Derived (what screens show), Repo
   tracking/  location helper and the foreground tracking service
   ui/        Compose screens
-app/src/test/  JVM unit tests
+app/src/test/  JVM unit tests, and screen tests that render every screen (Robolectric)
+tools/web-reference/  web-vs-native comparison harness and the parity method
 ```
 
 Backend settings (project URL, publishable key, receipts bucket, site origin) are the

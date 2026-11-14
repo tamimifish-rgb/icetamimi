@@ -132,9 +132,12 @@ fun <T> rememberLoad(vararg keys: Any?, load: suspend (bearer: String) -> T): Lo
     val repo = LocalRepo.current
     var state by remember { mutableStateOf(LoadState<T>(null, null)) }
     LaunchedEffect(*keys) {
-        runCatching { load(repo.api.token()) }
-            .onSuccess { state = LoadState(it, null) }
-            .onFailure { if (it !is CancellationException) state = LoadState(state.value, it.userMessage("تعذّر تحميل البيانات")) }
+        val result = runCatching { load(repo.api.token()) }
+        result.exceptionOrNull()?.let { if (it is CancellationException) throw it }
+        onMain {
+            result.onSuccess { state = LoadState(it, null) }
+                .onFailure { state = LoadState(state.value, it.userMessage("تعذّر تحميل البيانات")) }
+        }
     }
     return state
 }

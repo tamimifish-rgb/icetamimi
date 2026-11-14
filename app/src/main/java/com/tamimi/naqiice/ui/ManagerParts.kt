@@ -87,12 +87,12 @@ fun <T> rememberLoaded(vararg keys: Any?, every: Long = 0L, fetch: suspend (bear
     LaunchedEffect(*keys, tick) {
         while (true) {
             try {
-                data = latest(repo.api.token())
-                error = null
+                val fresh = latest(repo.api.token())
+                onMain { data = fresh; error = null }
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                error = e.userMessage("تعذّر التحميل")
+                onMain { error = e.userMessage("تعذّر التحميل") }
             }
             if (every <= 0) break
             delay(every)

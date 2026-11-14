@@ -135,7 +135,10 @@ private fun <T> rememberQuery(key: Any, enabled: Boolean, load: suspend () -> T)
     LaunchedEffect(key, enabled, tick) {
         if (!enabled) return@LaunchedEffect
         active++
-        try { loaded = key to attempt { current() } } finally { active-- }
+        try {
+            val result = attempt { current() }
+            onMain { loaded = key to result }
+        } finally { active-- }
     }
     return Query(loaded?.takeIf { it.first == key }?.second, active > 0) { tick++ }
 }

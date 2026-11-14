@@ -347,6 +347,13 @@ class Nav(home: Screen) {
     fun back(): Boolean = if (stack.size > 1) { stack.removeAt(stack.lastIndex); true } else false
 }
 
+/**
+ * Applies loaded data on the main thread. On a phone a screen's effects already run there,
+ * so this is free; it matters where the caller's dispatcher is unconfined (the screen
+ * tests), where the write would otherwise happen on a network thread and could be missed.
+ */
+suspend fun <T> onMain(block: () -> T): T = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main.immediate) { block() }
+
 // ---- operations -----------------------------------------------------------------------
 
 /**
