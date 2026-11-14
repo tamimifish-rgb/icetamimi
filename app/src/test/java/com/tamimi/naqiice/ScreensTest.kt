@@ -179,4 +179,19 @@ class ScreensTest {
         compose.onNodeWithText("دخول").performScrollTo().assertExists()
         shot("login")
     }
+
+    /** Manager screens read online only; without a session they must show an error, not crash. */
+    @Test fun managerScreensRenderWithoutAConnection() {
+        repo.me.value = Me(OWNER, null, "المدير", null, listOf("admin"))
+        show(Screen.Admin)
+        val screens = listOf(
+            Screen.Admin to "admin", Screen.Trips to "trips", Screen.Trip(TRIP) to "trip", Screen.Closings to "closings",
+            Screen.Reports to "reports", Screen.RouteMap to "map", Screen.AdminSetup to "admin-setup", Screen.AdminProducts to "admin-products",
+            Screen.AdminRegions to "admin-regions", Screen.AdminTrucks to "admin-trucks", Screen.AdminCustomers to "admin-customers",
+            Screen.AdminFreezers to "admin-freezers", Screen.AdminUsers to "admin-users", Screen.AdminCompany to "admin-company",
+            Screen.InvoiceChanges to "invoice-changes", Screen.InvoiceChange("s0", "cancel") to "invoice-change",
+        )
+        for ((screen, name) in screens) open(screen, name)
+        compose.onNodeWithText("الإعدادات").assertExists()
+    }
 }

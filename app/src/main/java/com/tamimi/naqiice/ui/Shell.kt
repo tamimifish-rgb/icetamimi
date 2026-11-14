@@ -253,8 +253,8 @@ private fun ScreenContent(screen: Screen, me: Me) {
         Screen.AdminProducts -> Guard(me.isAdmin) { AdminProductsScreen() }
         Screen.AdminRegions -> Guard(me.isAdmin) { AdminRegionsScreen() }
         Screen.AdminTrucks -> Guard(me.isAdmin) { AdminTrucksScreen() }
-        Screen.AdminCustomers -> Guard(me.isAdmin) { AdminCustomersScreen() }
-        Screen.AdminFreezers -> Guard(me.isAdmin) { AdminFreezersScreen() }
+        Screen.AdminCustomers -> Guard(me.isManager) { AdminCustomersScreen() }
+        Screen.AdminFreezers -> Guard(me.isManager) { AdminFreezersScreen() }
         Screen.AdminUsers -> Guard(me.isAdmin) { AdminUsersScreen() }
         Screen.AdminCompany -> Guard(me.isAdmin) { AdminCompanyScreen() }
     }

@@ -85,17 +85,17 @@ suspend fun Repo.privilegedToken(owner: String?): String {
 /** Refreshes the cached snapshot after reference data changed, without holding the form. */
 fun Repo.refreshSoon() { scope.launch { syncNow() } }
 
-class Loaded<T>(val value: T?, val error: String?)
+class LoadState<T>(val value: T?, val error: String?)
 
 /** Online-only read; a reload keeps showing the previous rows until the new ones arrive. */
 @Composable
-fun <T> rememberLoad(vararg keys: Any?, load: suspend (bearer: String) -> T): Loaded<T> {
+fun <T> rememberLoad(vararg keys: Any?, load: suspend (bearer: String) -> T): LoadState<T> {
     val repo = LocalRepo.current
-    var state by remember { mutableStateOf(Loaded<T>(null, null)) }
+    var state by remember { mutableStateOf(LoadState<T>(null, null)) }
     LaunchedEffect(*keys) {
         runCatching { load(repo.api.token()) }
-            .onSuccess { state = Loaded(it, null) }
-            .onFailure { if (it !is CancellationException) state = Loaded(state.value, it.userMessage("تعذّر تحميل البيانات")) }
+            .onSuccess { state = LoadState(it, null) }
+            .onFailure { if (it !is CancellationException) state = LoadState(state.value, it.userMessage("تعذّر تحميل البيانات")) }
     }
     return state
 }
