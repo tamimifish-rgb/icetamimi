@@ -200,7 +200,7 @@ fun AppShell(me: Me) {
             HorizontalDivider(color = Ice.border)
             Row(Modifier.fillMaxWidth().background(Ice.card).windowInsetsPadding(WindowInsets.navigationBars)) {
                 items.forEach { item ->
-                    val active = nav.stack.first() == item.screen || nav.current == item.screen
+                    val active = nav.stack.first()::class == item.screen::class || nav.current::class == item.screen::class
                     Column(
                         Modifier.weight(1f).clickable { nav.home(item.screen) }.padding(vertical = 8.dp),
                         horizontalAlignment = Alignment.CenterHorizontally,
