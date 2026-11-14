@@ -1,39 +1,20 @@
 package com.tamimi.naqiice.ui
 
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.foundation.verticalScroll
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.AcUnit
-import androidx.compose.material.icons.filled.ChevronLeft
-import androidx.compose.material.icons.filled.FactCheck
-import androidx.compose.material.icons.filled.Group
-import androidx.compose.material.icons.filled.Inventory2
-import androidx.compose.material.icons.filled.LocalShipping
-import androidx.compose.material.icons.filled.Map
-import androidx.compose.material.icons.filled.Store
-import androidx.compose.material.icons.filled.Visibility
-import androidx.compose.material.icons.filled.VisibilityOff
-import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Checkbox
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.Surface
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -42,13 +23,14 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.platform.LocalLayoutDirection
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
-import androidx.compose.ui.text.input.PasswordVisualTransformation
-import androidx.compose.ui.text.input.VisualTransformation
-import androidx.compose.ui.text.style.TextDirection
+import androidx.compose.ui.text.withStyle
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.tamimi.naqiice.core.adenDay
@@ -128,27 +110,37 @@ fun AdminHomeScreen() {
             )
         }
     }
-    Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
+    val d = loaded.value
+    // div.space-y-4
+    Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
         PageTitle("لوحة اليوم")
-        MidButton("بيانات المصنع والفاتورة", outlined = true) { nav.go(Screen.AdminCompany) }
-        NavCard { NavRow(Icons.Filled.Group, "العملاء") { nav.go(Screen.AdminCustomers) } }
-        loaded.error?.let { Text(it, fontSize = 14.sp, color = Ice.destructive) }
-        val d = loaded.value
-        if (d == null) { if (loaded.error == null) Empty("جارٍ التحميل…") } else {
-            StatGrid(listOf(
-                Triple("مبيعات اليوم", formatMoney(d.sales), Ice.foreground),
-                Triple("عدد الفواتير", d.invoices.toString(), Ice.foreground),
-                Triple("نقد اليوم", formatMoney(d.cash), Ice.success),
-                Triple("إيداعات اليوم", formatMoney(d.deposits), Ice.foreground),
-                Triple("آجل اليوم", formatMoney(d.credit), Ice.warning),
-                Triple("تحصيل اليوم", formatMoney(d.collected), Ice.foreground),
-                Triple("إجمالي ديون العملاء", formatMoney(d.debt), Ice.destructive),
-                Triple("العملاء", d.customers.toString(), Ice.foreground),
-                Triple("ثلاجات لدى العملاء", "${d.placed} / ${d.freezers}", Ice.foreground),
-            ))
-            if (d.pendingClosings > 0) Banner(Ice.warning.copy(alpha = 0.3f), Modifier.clickable { nav.go(Screen.Closings) }) {
-                Text("${d.pendingClosings} إغلاق بانتظار المراجعة ←", fontSize = 14.sp, fontWeight = FontWeight.Medium)
-            }
+        Btn("بيانات المصنع والفاتورة", { nav.go(Screen.AdminCompany) }, variant = Variant.Outline, height = 44.dp)
+        // Button outline: h-auto min-h-14 w-full justify-between bg-card px-4 py-3 text-base
+        Row(
+            Modifier.fillMaxWidth().heightIn(min = 56.dp).smallShadow(Radius.md).box(Radius.md, Ice.card, Ice.input).clip(RoundedCornerShape(Radius.md))
+                .tap { nav.go(Screen.AdminCustomers) }.padding(horizontal = 16.dp, vertical = 12.dp),
+            verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Icon(Lucide.Users, null, Modifier.size(16.dp))
+            Text("العملاء", Modifier.weight(1f), style = T.base.medium)
+            Icon(Lucide.ChevronLeft, null, Modifier.size(16.dp))
+        }
+        loaded.error?.let { Text(it, style = T.sm.color(Ice.destructive)) }
+        // As on the web the tiles are there from the start; the figures fill in once loaded.
+        StatGrid(listOf(
+            Triple("مبيعات اليوم", formatMoney(d?.sales), Ice.foreground),
+            Triple("عدد الفواتير", d?.invoices?.toString() ?: "—", Ice.foreground),
+            Triple("نقد اليوم", formatMoney(d?.cash), Ice.success),
+            Triple("إيداعات اليوم", formatMoney(d?.deposits), Ice.foreground),
+            Triple("آجل اليوم", formatMoney(d?.credit), Ice.onWarning),
+            Triple("تحصيل اليوم", formatMoney(d?.collected), Ice.foreground),
+            Triple("إجمالي ديون العملاء", formatMoney(d?.debt), Ice.destructive),
+            Triple("العملاء", d?.customers?.toString() ?: "—", Ice.foreground),
+            Triple("ثلاجات لدى العملاء", if (d != null) "${d.placed} / ${d.freezers}" else "—", Ice.foreground),
+        ))
+        // a.block.rounded-xl.bg-warning/30.p-3.text-sm.font-medium
+        if (d != null && d.pendingClosings > 0) Banner(Ice.warning.copy(alpha = 0.3f), Modifier.tap { nav.go(Screen.Closings) }) {
+            Text("${d.pendingClosings} إغلاق بانتظار المراجعة ←", style = T.sm.medium)
         }
     }
 }
@@ -156,39 +148,20 @@ fun AdminHomeScreen() {
 // ---- settings menu --------------------------------------------------------------------
 
 @Composable
-private fun NavCard(content: @Composable () -> Unit) {
-    Surface(Modifier.fillMaxWidth(), shape = RoundedCornerShape(16.dp), color = Ice.card, border = BorderStroke(1.dp, Ice.border)) { Column { content() } }
-}
-
-@Composable
-private fun NavRow(icon: ImageVector, label: String, onClick: () -> Unit) {
-    Row(Modifier.fillMaxWidth().clickable(onClick = onClick).padding(16.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-        Icon(icon, null, tint = Ice.accent)
-        Text(label, Modifier.weight(1f), fontWeight = FontWeight.Medium)
-        Icon(Icons.Filled.ChevronLeft, null, tint = Ice.mutedText)
-    }
-}
-
-@Composable
 fun AdminSetupScreen() {
     val nav = LocalNav.current
     val items = listOf(
-        Triple(Screen.AdminProducts, "المنتجات والأسعار", Icons.Filled.Inventory2),
-        Triple(Screen.AdminCustomers, "العملاء والأسعار الخاصة", Icons.Filled.Store),
-        Triple(Screen.AdminRegions, "المناطق", Icons.Filled.Map),
-        Triple(Screen.AdminTrucks, "الشاحنات", Icons.Filled.LocalShipping),
-        Triple(Screen.AdminUsers, "الموظفون والصلاحيات", Icons.Filled.Group),
-        Triple(Screen.AdminFreezers, "الثلاجات", Icons.Filled.AcUnit),
-        Triple(Screen.Closings, "إغلاقات اليوم", Icons.Filled.FactCheck),
+        Triple(Lucide.Package, "المنتجات والأسعار", Screen.AdminProducts),
+        Triple(Lucide.Store, "العملاء والأسعار الخاصة", Screen.AdminCustomers),
+        Triple(Lucide.MapPinned, "المناطق", Screen.AdminRegions),
+        Triple(Lucide.Truck, "الشاحنات", Screen.AdminTrucks),
+        Triple(Lucide.Users, "الموظفون والصلاحيات", Screen.AdminUsers),
+        Triple(Lucide.Snowflake, "الثلاجات", Screen.AdminFreezers),
+        Triple(Lucide.ClipboardCheck, "إغلاقات اليوم", Screen.Closings),
     )
-    Column {
+    Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
         PageTitle("الإعدادات")
-        NavCard {
-            items.forEachIndexed { index, (screen, label, icon) ->
-                if (index > 0) Box(Modifier.fillMaxWidth().height(1.dp).background(Ice.border))
-                NavRow(icon, label) { nav.go(screen) }
-            }
-        }
+        NavList(items.map { (icon, label, screen) -> Triple(icon, label) { nav.go(screen) } })
     }
 }
 
@@ -232,7 +205,7 @@ fun AdminRegionsScreen() {
 
 @Composable
 fun AdminTrucksScreen() {
-    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+    Column {
         Crud(
             "trucks", "الشاحنات", order = "code", defaults = mapOf("active" to TRUE),
             fields = listOf(
@@ -240,7 +213,8 @@ fun AdminTrucksScreen() {
                 CrudField("plate", "رقم اللوحة"), CrudField("active", "مفعّلة", CrudType.BOOL),
             ),
         )
-        Text("لربط موزع بشاحنة افتح صفحة الموظفين.", fontSize = 12.sp, color = Ice.mutedText)
+        // p.mt-3.text-xs.text-muted-foreground
+        Text("لربط موزع بشاحنة افتح صفحة الموظفين.", Modifier.padding(top = 12.dp), style = T.xs.muted)
     }
 }
 
@@ -276,7 +250,8 @@ private fun PriceEditor(customerId: String) {
     val operation = rememberOperation()
     var open by remember(customerId) { mutableStateOf(false) }
     if (!open) {
-        TextButton({ open = true }) { Text("أسعار خاصة لهذا العميل", fontSize = 12.sp) }
+        // Button link: mt-2 min-h-11 px-0 text-xs
+        Btn({ open = true }, Modifier.padding(top = 8.dp), Variant.Link, height = 44.dp, style = T.xs.medium, padding = PaddingValues(0.dp)) { Text("أسعار خاصة لهذا العميل") }
         return
     }
     // Variant id → typed price; only variants with a saved or edited price are present.
@@ -287,19 +262,25 @@ private fun PriceEditor(customerId: String) {
         values = prices.associate { (it.str("variant_id") ?: "") to jnum(it.num("price")).content }
         variants
     }
-    Column(Modifier.padding(top = 8.dp).fillMaxWidth().background(Ice.muted, RoundedCornerShape(8.dp)).padding(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        loaded.error?.let { Text(it, fontSize = 12.sp, color = Ice.destructive) }
+    // div.mt-2.space-y-2.rounded-lg.bg-muted.p-2
+    Column(Modifier.padding(top = 8.dp).fillMaxWidth().background(Ice.muted, RoundedCornerShape(Radius.lg)).padding(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        loaded.error?.let { Text(it, style = T.xs.color(Ice.destructive)) }
         val variants = loaded.value
-        if (variants == null) { if (loaded.error == null) Text("جارٍ التحميل…", fontSize = 12.sp, color = Ice.mutedText) }
-        else variants.forEach { v ->
+        variants?.forEach { v ->
             val id = v.str("id") ?: ""
+            // div.flex.items-center.gap-2.text-xs > span.flex-1 + Input.h-9.w-24
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text("${v.str("name") ?: ""} (${formatMoney(v.num("price"))})", Modifier.weight(1f), fontSize = 12.sp)
-                Field(values[id] ?: "", { values = values + (id to it) }, "افتراضي", Modifier.width(120.dp), numeric = true)
+                RichText(buildAnnotatedString {
+                    append("${v.str("name") ?: ""} ")
+                    withStyle(SpanStyle(color = Ice.mutedText)) { append("(${formatMoney(v.num("price"))})") }
+                }, Modifier.weight(1f), T.xs)
+                Input(values[id] ?: "", { values = values + (id to it) }, Modifier.width(96.dp), "افتراضي", numeric = true)
             }
         }
+        // Button size=sm: h-8 px-3 text-xs
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            MidButton("حفظ", enabled = variants != null && !operation.busy) {
+            val small = PaddingValues(horizontal = 12.dp)
+            Btn({
                 operation.run {
                     val bearer = repo.privilegedToken(me?.id)
                     val cleared = values.filterValues { it.isEmpty() }.keys
@@ -315,8 +296,8 @@ private fun PriceEditor(customerId: String) {
                     open = false
                     repo.refreshSoon()
                 }
-            }
-            MidButton("إلغاء", outlined = true, enabled = !operation.busy) { open = false }
+            }, enabled = variants != null && !operation.busy, height = 32.dp, style = T.xs.medium, padding = small) { Text("حفظ") }
+            Btn({ open = false }, variant = Variant.Ghost, enabled = !operation.busy, height = 32.dp, style = T.xs.medium, padding = small) { Text("إلغاء") }
         }
     }
 }
@@ -353,12 +334,15 @@ fun AdminFreezersScreen() {
             extra = { r ->
                 val balance = r.str("customer_id")?.let { balances[it] }
                 val recent = events[r.str("id")]?.take(3) ?: emptyList()
-                if (balance != null || recent.isNotEmpty()) Column(Modifier.padding(top = 8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    Box(Modifier.fillMaxWidth().height(1.dp).background(Ice.border))
-                    if (balance != null) Text("مبيعات العميل: الشهر ${formatMoney(balance.num("month_sales"))} · الإجمالي ${formatMoney(balance.num("total_sales"))}", fontSize = 12.sp, color = Ice.mutedText)
-                    recent.forEach { e ->
-                        val type = e.str("event_type") ?: ""
-                        Text("${formatDate(e.str("created_at"))} — ${FREEZER_EVENT[type] ?: type} ${e.str("notes") ?: ""}", fontSize = 12.sp, color = Ice.mutedText)
+                // div.mt-2.space-y-1.border-t.pt-2.text-xs.text-muted-foreground (there even when empty)
+                Column(Modifier.padding(top = 8.dp)) {
+                    Divider()
+                    Column(Modifier.padding(top = 8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        if (balance != null) Text("مبيعات العميل: الشهر ${formatMoney(balance.num("month_sales"))} · الإجمالي ${formatMoney(balance.num("total_sales"))}", style = T.xs.muted)
+                        recent.forEach { e ->
+                            val type = e.str("event_type") ?: ""
+                            Text("${formatDate(e.str("created_at"))} — ${FREEZER_EVENT[type] ?: type} ${e.str("notes") ?: ""}", style = T.xs.muted)
+                        }
                     }
                 }
             },
@@ -422,33 +406,43 @@ fun AdminUsersScreen() {
         repo.scope.launch { repo.reloadMe() }
     }
 
-    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        PageTitle("الموظفون") { MidButton("موظف جديد") { visible = false; form = StaffForm() } }
+    // div.space-y-3
+    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        // div.flex.items-center > h1.flex-1.text-xl.font-bold + Button (h-9)
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            Text("الموظفون", Modifier.weight(1f), style = T.xl.bold)
+            Btn("موظف جديد", { visible = false; form = StaffForm() }, icon = Lucide.UserPlus)
+        }
         loaded.error?.let {
-            Text(it, fontSize = 14.sp, color = Ice.destructive)
-            MidButton("إعادة المحاولة", outlined = true) { version++ }
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(it, style = T.sm.color(Ice.destructive))
+                Btn("إعادة المحاولة", { version++ }, variant = Variant.Outline, height = 44.dp)
+            }
         }
         val staff = loaded.value
         if (staff == null) { if (loaded.error == null) Empty("جارٍ التحميل…") } else staff.profiles.forEach { p ->
             val id = p.str("id")
             val role = staff.roles.firstOrNull { it.str("user_id") == id }?.str("role") ?: ""
-            IceCard {
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Text(p.str("full_name")?.ifEmpty { null } ?: "بدون اسم", fontWeight = FontWeight.Bold)
-                        Text(p.str("username") ?: "", fontSize = 12.sp, color = Ice.mutedText, style = TextStyle(textDirection = TextDirection.Ltr))
-                    }
-                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Text(
-                            (ROLE_LABEL.firstOrNull { it.first == role }?.second ?: "بدون صلاحية") + " · " + (if (p.bool("active") == true) "نشط" else "موقوف") +
-                                (if (p.bool("pin_enabled") != true) " · يستخدم بيانات الدخول السابقة" else ""),
-                            Modifier.weight(1f), fontSize = 14.sp,
-                        )
-                        MidButton("تعديل" + if (id == me?.id) " حسابي" else "", outlined = true) {
-                            visible = false
-                            form = StaffForm(id, p.str("full_name") ?: "", p.str("username") ?: "", "", role.ifEmpty { "distributor" }, p.str("truck_id") ?: "", p.bool("active") == true)
-                        }
-                    }
+            // div.space-y-2.rounded-xl.border.bg-card.p-3
+            Column(Modifier.fillMaxWidth().box(Radius.xl).padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                // <b>name</b> <span class="text-xs text-muted-foreground break-all" dir="ltr">username</span>
+                RichText(buildAnnotatedString {
+                    withStyle(SpanStyle(fontWeight = FontWeight.Bold)) { append(p.str("full_name")?.ifEmpty { null } ?: "بدون اسم") }
+                    append(" ")
+                    // An isolated left-to-right run that may break after any character.
+                    withStyle(SpanStyle(fontSize = 12.sp, color = Ice.mutedText)) { append("\u2066" + (p.str("username") ?: "").toList().joinToString("\u200B") + "\u2069") }
+                })
+                // div.flex.items-center.justify-between.gap-2.text-sm
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(
+                        (ROLE_LABEL.firstOrNull { it.first == role }?.second ?: "بدون صلاحية") + " · " + (if (p.bool("active") == true) "نشط" else "موقوف") +
+                            (if (p.bool("pin_enabled") != true) " · يستخدم بيانات الدخول السابقة" else ""),
+                        Modifier.weight(1f), style = T.sm,
+                    )
+                    Btn("تعديل" + if (id == me?.id) " حسابي" else "", {
+                        visible = false
+                        form = StaffForm(id, p.str("full_name") ?: "", p.str("username") ?: "", "", role.ifEmpty { "distributor" }, p.str("truck_id") ?: "", p.bool("active") == true)
+                    }, variant = Variant.Outline, height = 44.dp)
                 }
             }
         }
@@ -456,39 +450,50 @@ fun AdminUsersScreen() {
 
     form?.let { f ->
         val formError = staffFormError(f.fullName, f.username, f.pin, f.editing != null)
-        AlertDialog(
-            onDismissRequest = { if (!operation.busy) form = null },
-            title = { Text(if (f.editing != null) "تعديل الموظف" else "حساب موظف جديد", fontSize = 18.sp) },
-            text = {
-                Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    Field(f.fullName, { form = f.copy(fullName = it) }, "الاسم")
-                    Field(f.username, { form = f.copy(username = it) }, "اسم المستخدم / رمز الموظف", ltr = true, keyboard = KeyboardType.Ascii)
-                    Text(USERNAME_HINT, fontSize = 12.sp, color = Ice.mutedText)
-                    OutlinedTextField(
-                        value = f.pin, onValueChange = { form = f.copy(pin = it) }, singleLine = true, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(12.dp),
-                        label = { Text(if (f.editing != null) "رمز جديد (اتركه فارغاً للحفاظ على الحالي)" else "رمز الدخول (٦ أرقام)") },
-                        textStyle = TextStyle(fontSize = 16.sp, textDirection = TextDirection.Ltr),
-                        visualTransformation = if (visible) VisualTransformation.None else PasswordVisualTransformation(),
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
-                        trailingIcon = {
-                            IconButton({ visible = !visible }) {
-                                Icon(if (visible) Icons.Filled.VisibilityOff else Icons.Filled.Visibility, if (visible) "إخفاء الرمز" else "إظهار الرمز")
-                            }
-                        },
-                    )
-                    Picker("الصلاحية", ROLE_LABEL, f.role) { form = f.copy(role = it) }
-                    Picker("الشاحنة", listOf("" to "بدون شاحنة") + (loaded.value?.trucks ?: emptyList()).map { (it.str("id") ?: "") to (it.str("name") ?: "") }, f.truckId) { form = f.copy(truckId = it) }
-                    if (f.editing != null) Row(Modifier.fillMaxWidth().clickable { form = f.copy(active = !f.active) }, verticalAlignment = Alignment.CenterVertically) {
-                        Checkbox(f.active, { form = f.copy(active = it) })
-                        Text("الحساب نشط")
+        FormDialog(if (f.editing != null) "تعديل الموظف" else "حساب موظف جديد", { if (!operation.busy) form = null }) {
+            // div.space-y-3 of div.space-y-1 (Label + Input h-9)
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                FieldLabel("الاسم") { Input(f.fullName, { form = f.copy(fullName = it) }) }
+                Column {
+                    FieldLabel("اسم المستخدم / رمز الموظف") {
+                        Ltr { Input(f.username, { form = f.copy(username = it) }, placeholder = "ahmed-01", ltr = true, keyboard = KeyboardType.Ascii) }
                     }
-                    if (formError != null && (f.fullName.isNotEmpty() || f.username.isNotEmpty() || f.pin.isNotEmpty())) Text(formError, fontSize = 14.sp, color = Ice.destructive)
+                    Text(USERNAME_HINT, Modifier.padding(top = 4.dp), style = T.xs.muted)
                 }
-            },
-            confirmButton = { TextButton({ submit(f) }, enabled = !operation.busy) { Text(if (operation.busy) "جارٍ الحفظ…" else "حفظ") } },
-            dismissButton = { TextButton({ form = null }, enabled = !operation.busy) { Text("إلغاء") } },
-        )
+                FieldLabel(if (f.editing != null) "رمز جديد (اتركه فارغاً للحفاظ على الحالي)" else "رمز الدخول (٦ أرقام)") {
+                    // div.flex.gap-2 > Input (h-9, at the top) + Button outline size-11
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.Top) {
+                        Ltr(Modifier.weight(1f)) { Input(f.pin, { form = f.copy(pin = it) }, ltr = true, password = !visible, keyboard = KeyboardType.NumberPassword) }
+                        Btn({ visible = !visible }, Modifier.size(44.dp), Variant.Outline, height = 44.dp, padding = PaddingValues(0.dp)) {
+                            Icon(if (visible) Lucide.EyeOff else Lucide.Eye, if (visible) "إخفاء الرمز" else "إظهار الرمز", Modifier.size(16.dp))
+                        }
+                    }
+                }
+                // select.h-10.w-full.rounded-md.border.border-input.bg-background.px-2
+                WebSelect(ROLE_LABEL, f.role, height = 40.dp, padding = 8.dp) { form = f.copy(role = it) }
+                WebSelect(
+                    listOf("" to "بدون شاحنة") + (loaded.value?.trucks ?: emptyList()).map { (it.str("id") ?: "") to (it.str("name") ?: "") },
+                    f.truckId, height = 40.dp, padding = 8.dp,
+                ) { form = f.copy(truckId = it) }
+                // Label.flex.min-h-11.items-center.gap-2 > input[type=checkbox]
+                if (f.editing != null) Row(
+                    Modifier.fillMaxWidth().heightIn(min = 44.dp).tap { form = f.copy(active = !f.active) },
+                    verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    WebCheckbox(f.active)
+                    Text("الحساب نشط", style = T.sm.medium.copy(lineHeight = 14.sp))
+                }
+                if (formError != null && (f.fullName.isNotEmpty() || f.username.isNotEmpty() || f.pin.isNotEmpty())) Text(formError, style = T.sm.color(Ice.destructive))
+                Btn(if (operation.busy) "جارٍ الحفظ…" else "حفظ", { submit(f) }, Modifier.fillMaxWidth(), enabled = !operation.busy, height = 44.dp)
+            }
+        }
     }
+}
+
+/** `dir="ltr"` on an input: the field itself is laid out left to right. */
+@Composable
+private fun Ltr(modifier: Modifier = Modifier, content: @Composable () -> Unit) {
+    Box(modifier) { CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr, content = content) }
 }
 
 // ---- factory details printed on invoices ----------------------------------------------
@@ -514,14 +519,15 @@ fun AdminCompanyScreen() {
             // The settings table is an optional server addition; without it the cached values stay.
             .onFailure { if (it !is CancellationException && (it as? ApiError)?.code !in listOf("PGRST205", "42P01")) failed = true }
     }
-    Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
+    // div.space-y-4 of label.block.space-y-2.text-sm (span + Input h-9) and Button.min-h-12.w-full
+    Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
         PageTitle("بيانات المصنع")
-        if (failed) Text("تعذّر تحميل البيانات", fontSize = 14.sp, color = Ice.destructive)
-        Field(form.name, { form = form.copy(name = it) }, "اسم المصنع")
-        Field(form.address, { form = form.copy(address = it) }, "العنوان")
-        Field(form.phone, { form = form.copy(phone = it) }, "الهاتف (اختياري)")
-        Field(form.footerNote, { form = form.copy(footerNote = it) }, "ملاحظة أسفل الفاتورة (اختيارية)")
-        BigButton("حفظ", enabled = !operation.busy && form.name.isNotBlank()) {
+        if (failed) Text("تعذّر تحميل البيانات", style = T.sm.color(Ice.destructive))
+        Column { Text("اسم المصنع", style = T.sm); Input(form.name, { form = form.copy(name = it) }) }
+        Column { Text("العنوان", style = T.sm); Input(form.address, { form = form.copy(address = it) }) }
+        Column { Text("الهاتف (اختياري)", style = T.sm); Input(form.phone, { form = form.copy(phone = it) }) }
+        Column { Text("ملاحظة أسفل الفاتورة (اختيارية)", style = T.sm); Input(form.footerNote, { form = form.copy(footerNote = it) }) }
+        Btn("حفظ", {
             operation.run {
                 val bearer = repo.privilegedToken(me?.id)
                 try {
@@ -535,6 +541,6 @@ fun AdminCompanyScreen() {
                 toast("تم حفظ بيانات المصنع")
                 repo.refreshSoon()
             }
-        }
+        }, Modifier.fillMaxWidth(), enabled = !operation.busy && form.name.isNotBlank(), height = 48.dp)
     }
 }

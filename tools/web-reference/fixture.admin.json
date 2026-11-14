@@ -1,0 +1,64 @@
+{
+ "tables": {
+  "products": [
+   { "id": "adm-p1", "name": "ثلج مجروش", "sort": 1, "active": true },
+   { "id": "adm-p2", "name": "قوالب ثلج", "sort": 2, "active": true },
+   { "id": "adm-p3", "name": "مياه معبأة", "sort": 3, "active": false }
+  ],
+  "profiles": [
+   {
+    "id": "adm-u1",
+    "full_name": "أحمد باوزير",
+    "username": "ahmed-01",
+    "truck_id": null,
+    "active": true,
+    "pin_enabled": true,
+    "created_at": "2026-10-02T08:00:00+00:00"
+   },
+   {
+    "id": "adm-u2",
+    "full_name": "خالد العمودي",
+    "username": "khaled.alamoudi@staff.pureice.internal",
+    "truck_id": null,
+    "active": false,
+    "pin_enabled": false,
+    "created_at": "2026-10-05T08:00:00+00:00"
+   }
+  ],
+  "customer_balances": [
+   { "customer_id": "c1", "balance": 2000, "month_sales": 40000, "total_sales": 90000 },
+   { "customer_id": "c2", "balance": 7500, "month_sales": 12000, "total_sales": 30500 }
+  ],
+  "freezer_events": [
+   {
+    "id": "adm-fe2",
+    "freezer_id": "f1",
+    "event_type": "condition",
+    "notes": "تعمل جيداً",
+    "created_at": "2026-11-12T09:30:00+00:00"
+   },
+   {
+    "id": "adm-fe1",
+    "freezer_id": "f1",
+    "event_type": "place",
+    "notes": null,
+    "created_at": "2026-11-10T08:00:00+00:00"
+   }
+  ],
+  "closings": [
+   {
+    "id": "adm-cl1",
+    "trip_id": "adm-trip1",
+    "status": "submitted",
+    "expected_cash": 18500,
+    "counted_cash": 18500,
+    "difference": 0,
+    "notes": null,
+    "review_note": null,
+    "created_by": "adm-u1",
+    "created_at": "2026-11-13T15:10:00+00:00",
+    "trips": { "trip_date": "2026-11-13", "trucks": { "name": "شاحنة ١" } }
+   }
+  ]
+ }
+}
