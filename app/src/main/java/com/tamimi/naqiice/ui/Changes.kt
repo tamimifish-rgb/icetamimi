@@ -1,17 +1,13 @@
 package com.tamimi.naqiice.ui
 
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.HorizontalDivider
-import androidx.compose.material3.Surface
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -25,10 +21,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.text.TextStyle
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.text.style.TextDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.tamimi.naqiice.core.CHANGE_KIND_LABEL
@@ -68,6 +61,9 @@ import com.tamimi.naqiice.core.Row as DataRow
 private const val CHANGES = "pureice_invoice_changes"
 private const val NOT_ENABLED = "طلبات إلغاء وتعديل الفواتير غير مفعّلة حالياً."
 
+/** `<span dir="ltr">`: an invoice number keeps its own left-to-right order inside Arabic text. */
+private fun ltr(text: String?) = "⁦${text ?: ""}⁩"
+
 // ---- manager banner -------------------------------------------------------------------
 
 /** Number of requests waiting for a decision, shown to managers above every screen. */
@@ -94,10 +90,10 @@ fun InvoiceChangeNotice() {
         }
     }
     if (waiting == 0 || onList) return
-    Text(
-        "$waiting طلب إلغاء أو تعديل فاتورة بانتظار الاعتماد ←",
-        Modifier.fillMaxWidth().background(Ice.warning).clickable { nav.go(Screen.InvoiceChanges) }.padding(horizontal = 16.dp, vertical = 8.dp),
-        color = Ice.onWarning, fontSize = 14.sp, fontWeight = FontWeight.Medium, textAlign = TextAlign.Center,
+    // a.block.bg-warning.px-4.py-2.text-center.text-sm.font-medium.text-warning-foreground
+    ArrowText(
+        "$waiting طلب إلغاء أو تعديل فاتورة بانتظار الاعتماد", T.sm.medium.color(Ice.onWarning),
+        Modifier.fillMaxWidth().background(Ice.warning).tap { nav.go(Screen.InvoiceChanges) }.padding(horizontal = 16.dp, vertical = 8.dp), center = true,
     )
 }
 
@@ -115,7 +111,7 @@ fun InvoiceChangesScreen() {
     var rejecting by remember { mutableStateOf<String?>(null) }
 
     val user = me
-    if (user == null || user.primaryRole == null) { Empty("ليست لديك صلاحية لهذه الصفحة."); return }
+    if (user == null || user.primaryRole == null) { NotAllowed(); return }
     if (!supported) { Empty(NOT_ENABLED); return }
     val manager = user.isManager
 
@@ -142,20 +138,30 @@ fun InvoiceChangesScreen() {
     fun variantName(id: String?) = id?.let { names.data?.first?.get(it) }?.takeIf { it.isNotEmpty() } ?: "صنف"
     fun who(id: String?) = id?.let { names.data?.second?.get(it) } ?: ""
 
+    /** div.divide-y of `flex justify-between py-1` rows. */
     @Composable
     fun Items(doc: DataRow) {
         changeItems(doc).forEachIndexed { index, item ->
-            if (index > 0) HorizontalDivider(color = Ice.border)
-            LineItem(
-                "${variantName(item.str("variant_id"))} × ${formatNum(item.num("qty"))}",
-                formatMoney(item.numOrNull("line_total") ?: (item.num("qty") * item.num("unit_price")).roundToLong().toDouble()),
-                bold = false,
-            )
+            if (index > 0) Divider()
+            Row(Modifier.fillMaxWidth().padding(vertical = 4.dp), horizontalArrangement = Arrangement.SpaceBetween) {
+                Text("${variantName(item.str("variant_id"))} × ${formatNum(item.num("qty"))}", style = T.sm)
+                Text(formatMoney(item.numOrNull("line_total") ?: (item.num("qty") * item.num("unit_price")).roundToLong().toDouble()), style = T.sm)
+            }
         }
     }
 
+    /** `mt-1 flex justify-between font-bold`. */
+    @Composable
+    fun Total(amount: Double?) {
+        Row(Modifier.padding(top = 4.dp).fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+            Text("الإجمالي", style = T.sm.bold)
+            Text(formatMoney(amount), style = T.sm.bold)
+        }
+    }
+
+    // div.space-y-3
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        PageTitle("طلبات إلغاء وتعديل الفواتير")
+        PageTitle("طلبات إلغاء وتعديل الفواتير", spacing = 12.dp)
         val data = load.data
         val rows = data.orEmpty().sortedWith(compareByDescending<DataRow> { it.str("status") == "pending" }.thenByDescending { it.str("created_at") ?: "" })
         if (load.error != null) LoadError("تعذّر تحميل الطلبات: ${load.error}", load.reload)
@@ -166,59 +172,63 @@ fun InvoiceChangesScreen() {
             val snap = c.obj("snapshot")
             val status = c.str("status")
             val replacement = c.obj("replacement")?.takeIf { c.str("kind") == "replace" }
-            IceCard {
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Column(Modifier.weight(1f)) {
-                            Text(snap?.str("customer_name") ?: "عميل", fontSize = 16.sp, fontWeight = FontWeight.Bold)
-                            Text("${snap?.str("truck_name") ?: ""} · ${c.str("invoice_no") ?: ""}", fontSize = 12.sp, color = Ice.mutedText, style = TextStyle(textDirection = TextDirection.Content))
-                        }
-                        Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                            if (c.str("kind") == "cancel") Chip(CHANGE_KIND_LABEL["cancel"]!!, Ice.destructive.copy(alpha = 0.1f), Ice.destructive)
-                            else Chip(CHANGE_KIND_LABEL[c.str("kind")] ?: "", Ice.secondary)
-                            when (status) {
-                                "approved" -> Chip(CHANGE_STATUS_LABEL[status] ?: "", Ice.success.copy(alpha = 0.15f), Ice.success)
-                                "rejected" -> Chip(CHANGE_STATUS_LABEL[status] ?: "", Ice.destructive.copy(alpha = 0.1f), Ice.destructive)
-                                else -> Chip(CHANGE_STATUS_LABEL[status] ?: "", Ice.warning.copy(alpha = 0.3f))
-                            }
+            // rounded-2xl border border-border bg-card p-4 text-sm shadow-soft
+            Column(Modifier.fillMaxWidth().box(Radius.xl2, shadow = true).padding(16.dp)) {
+                // flex items-start justify-between gap-2
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Column(Modifier.weight(1f)) {
+                        Text(snap?.str("customer_name") ?: "عميل", style = T.base.bold)
+                        Text("${snap?.str("truck_name") ?: ""} · ${ltr(c.str("invoice_no"))}", style = T.xs.muted)
+                    }
+                    Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        if (c.str("kind") == "cancel") Chip(CHANGE_KIND_LABEL["cancel"]!!, Ice.destructive.copy(alpha = 0.1f), Ice.destructive)
+                        else Chip(CHANGE_KIND_LABEL[c.str("kind")] ?: "", Ice.secondary)
+                        when (status) {
+                            "approved" -> Chip(CHANGE_STATUS_LABEL[status] ?: "", Ice.success.copy(alpha = 0.15f), Ice.success)
+                            "rejected" -> Chip(CHANGE_STATUS_LABEL[status] ?: "", Ice.destructive.copy(alpha = 0.1f), Ice.destructive)
+                            else -> Chip(CHANGE_STATUS_LABEL[status] ?: "", Ice.warning.copy(alpha = 0.3f))
                         }
                     }
-                    Banner(Ice.muted) { Text("السبب: ${c.str("reason") ?: ""}", fontSize = 14.sp) }
-                    Text(who(c.str("requested_by")).let { if (it.isNotEmpty()) "$it · " else "" } + formatDate(c.str("created_at")), fontSize = 12.sp, color = Ice.mutedText)
+                }
+                Banner(Ice.muted, Modifier.padding(top = 8.dp), radius = Radius.lg, padding = 8.dp) { Text("السبب: ${c.str("reason") ?: ""}") }
+                Text(who(c.str("requested_by")).let { if (it.isNotEmpty()) "$it · " else "" } + formatDate(c.str("created_at")), Modifier.padding(top = 8.dp), style = T.xs.muted)
 
+                // mt-3 grid gap-3 (one column at phone width)
+                Column(Modifier.padding(top = 12.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     DocumentBox(if (status == "approved") "الفاتورة الملغاة" else "الفاتورة الحالية", Ice.border) {
                         if (snap != null) Items(snap)
-                        LineItem("الإجمالي", formatMoney(snap?.num("total")))
+                        Total(snap?.num("total"))
                         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                            Text("نقداً ${formatMoney(snapshotCash(snap))}", fontSize = 12.sp)
-                            snap?.obj("deposit")?.let { Text("إيداع ${formatMoney(it.num("amount"))}", fontSize = 12.sp) }
-                            Text("آجل ${formatMoney(snap?.num("credit_amount"))}", fontSize = 12.sp)
+                            Text("نقداً ${formatMoney(snapshotCash(snap))}", style = T.xs)
+                            snap?.obj("deposit")?.let { Text("إيداع ${formatMoney(it.num("amount"))}", style = T.xs) }
+                            Text("آجل ${formatMoney(snap?.num("credit_amount"))}", style = T.xs)
                         }
-                        if (manager) DepositSlipButton(snap?.obj("deposit")?.str("slip_path"))
+                        val slip = snap?.obj("deposit")?.str("slip_path")
+                        if (manager && !slip.isNullOrEmpty()) Box(Modifier.padding(top = 4.dp)) { DepositSlipButton(slip) }
                     }
                     if (replacement != null) DocumentBox(if (status == "approved") "الفاتورة البديلة" else "الفاتورة المصحّحة المطلوبة", Ice.primary.copy(alpha = 0.4f)) {
                         Items(replacement)
-                        LineItem("الإجمالي", formatMoney(replacement.num("total")))
+                        Total(replacement.num("total"))
                         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                            Text("نقداً ${formatMoney(replacement.num("cash_paid"))}", fontSize = 12.sp)
-                            Text("آجل ${formatMoney(replacement.num("credit_amount"))}", fontSize = 12.sp)
+                            Text("نقداً ${formatMoney(replacement.num("cash_paid"))}", style = T.xs)
+                            Text("آجل ${formatMoney(replacement.num("credit_amount"))}", style = T.xs)
                         }
                         val replacementId = replacement.str("id")
                         if (status == "approved" && replacementId != null) {
-                            Text("فتح الفاتورة البديلة ←", color = Ice.primary, fontSize = 14.sp, modifier = Modifier.clickable { nav.go(Screen.Invoice(replacementId)) }.padding(vertical = 6.dp))
+                            ArrowText("فتح الفاتورة البديلة", T.sm.color(Ice.primary), Modifier.padding(top = 4.dp).fillMaxWidth().tap { nav.go(Screen.Invoice(replacementId)) })
                         }
                     }
-                    if (status == "pending") c.str("sale_id")?.let { saleId ->
-                        Text("فتح الفاتورة ←", color = Ice.primary, fontSize = 14.sp, modifier = Modifier.clickable { nav.go(Screen.Invoice(saleId)) }.padding(vertical = 6.dp))
-                    } else {
-                        val tone = if (status == "rejected") Ice.destructive else Ice.foreground
-                        Text("${if (status == "approved") "اعتمده" else "رفضه"} ${who(c.str("reviewed_by"))} · ${formatDate(c.str("reviewed_at"))}", fontSize = 14.sp, color = tone)
-                        c.str("review_note")?.takeIf { it.isNotEmpty() }?.let { Text("ملاحظة: $it", fontSize = 14.sp, color = tone) }
-                    }
-                    if (manager && status == "pending") Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        MidButton("اعتماد", Modifier.weight(1f), enabled = !operation.busy) { approving = changeId }
-                        MidButton("رفض", Modifier.weight(1f), enabled = !operation.busy, danger = true) { rejecting = changeId }
-                    }
+                }
+                if (status == "pending") c.str("sale_id")?.let { saleId ->
+                    ArrowText("فتح الفاتورة", T.sm.color(Ice.primary), Modifier.padding(top = 8.dp).fillMaxWidth().tap { nav.go(Screen.Invoice(saleId)) })
+                } else {
+                    val tone = if (status == "rejected") Ice.destructive else Ice.foreground
+                    Text("${if (status == "approved") "اعتمده" else "رفضه"} ${who(c.str("reviewed_by"))} · ${formatDate(c.str("reviewed_at"))}", Modifier.padding(top = 8.dp), style = T.sm.color(tone))
+                    c.str("review_note")?.takeIf { it.isNotEmpty() }?.let { Text("ملاحظة: $it", style = T.sm.color(tone)) }
+                }
+                if (manager && status == "pending") Row(Modifier.padding(top = 12.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Btn("اعتماد", { approving = changeId }, Modifier.weight(1f), enabled = !operation.busy, height = 48.dp)
+                    Btn("رفض", { rejecting = changeId }, Modifier.weight(1f), Variant.Destructive, enabled = !operation.busy, height = 48.dp)
                 }
             }
         }
@@ -228,22 +238,21 @@ fun InvoiceChangesScreen() {
         AlertDialog(
             onDismissRequest = { approving = null },
             text = { Text("اعتماد الطلب يلغي الفاتورة الحالية نهائياً. متابعة؟") },
-            confirmButton = { TextButton({ approving = null; review(changeId, "approved", null) }) { Text("اعتماد") } },
+            confirmButton = { TextButton({ approving = null; review(changeId, "approved", null) }) { Text("موافق") } },
             dismissButton = { TextButton({ approving = null }) { Text("إلغاء") } },
         )
     }
     rejecting?.let { changeId ->
-        ReasonDialog("سبب الرفض (يظهر للموزع)", "رفض", { rejecting = null }) { note -> rejecting = null; review(changeId, "rejected", note) }
+        ReasonDialog("سبب الرفض (يظهر للموزع)", "موافق", { rejecting = null }) { note -> rejecting = null; review(changeId, "rejected", note) }
     }
 }
 
+/** `rounded-lg border p-2` with a `mb-1 font-bold` title. */
 @Composable
 private fun DocumentBox(title: String, border: Color, content: @Composable () -> Unit) {
-    Surface(Modifier.fillMaxWidth(), shape = RoundedCornerShape(8.dp), color = Ice.card, border = BorderStroke(1.dp, border)) {
-        Column(Modifier.padding(8.dp)) {
-            Text(title, fontSize = 14.sp, fontWeight = FontWeight.Bold)
-            content()
-        }
+    Column(Modifier.fillMaxWidth().box(Radius.lg, null, border).padding(8.dp)) {
+        Text(title, Modifier.padding(bottom = 4.dp), style = T.sm.bold)
+        content()
     }
 }
 
@@ -317,63 +326,77 @@ fun InvoiceChangeScreen(id: String, kind: String) {
     val truck = snap.truck(sale.str("truck_id"))
     fun variantName(variantId: String?) = snap.variant(variantId)?.str("name") ?: "صنف"
 
-    Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
+    // div.space-y-4
+    Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
         PageTitle(if (replace) "طلب تعديل فاتورة" else "طلب إلغاء فاتورة")
+        // rounded-2xl bg-card p-4 shadow-soft text-sm
         IceCard {
             Column {
-                Text(customer?.str("name") ?: "", fontSize = 16.sp, fontWeight = FontWeight.Bold)
-                Text("فاتورة ${sale.str("invoice_no") ?: ""}", fontSize = 14.sp, color = Ice.mutedText, style = TextStyle(textDirection = TextDirection.Content))
-                oldItems.forEachIndexed { index, item ->
-                    if (index > 0) HorizontalDivider(color = Ice.border)
-                    LineItem("${variantName(item.str("variant_id"))} × ${formatNum(item.num("qty"))}", formatMoney(item.num("line_total")))
+                Text(customer?.str("name") ?: "", style = T.base.bold)
+                Text("فاتورة ${ltr(sale.str("invoice_no"))}", style = T.sm.muted)
+                // mt-2 divide-y of `flex justify-between py-1.5`
+                Column(Modifier.padding(top = 8.dp)) {
+                    oldItems.forEachIndexed { index, item ->
+                        if (index > 0) Divider()
+                        Row(Modifier.fillMaxWidth().padding(vertical = 6.dp), horizontalArrangement = Arrangement.SpaceBetween) {
+                            Text("${variantName(item.str("variant_id"))} × ${formatNum(item.num("qty"))}", style = T.sm)
+                            Text(formatMoney(item.num("line_total")), style = T.sm.bold)
+                        }
+                    }
                 }
-                LineItem("الإجمالي الحالي", formatMoney(sale.num("total")))
+                Row(Modifier.padding(top = 8.dp).fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                    Text("الإجمالي الحالي", style = T.sm.bold)
+                    Text(formatMoney(sale.num("total")), style = T.sm.bold)
+                }
             }
         }
 
         if (replace) {
-            SectionTitle("الفاتورة المصحّحة")
+            Text("الفاتورة المصحّحة", style = T.base.bold)
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 snap.variants.forEach { v ->
                     val variantId = v.str("id") ?: return@forEach
-                    Surface(shape = RoundedCornerShape(12.dp), color = Ice.card, border = BorderStroke(1.dp, Ice.border)) {
-                        Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                            Column(Modifier.weight(1f)) {
-                                Text(v.str("name") ?: "", fontWeight = FontWeight.Medium)
-                                Text("${formatMoney(priceFor(variantId, v.num("price"), prices))} / ${v.str("unit") ?: ""} · المتاح ${formatNum(available(variantId))}", fontSize = 12.sp, color = Ice.mutedText)
-                            }
-                            QtyStepper(qty[variantId] ?: 0.0) { qty[variantId] = it }
+                    // flex items-center gap-3 rounded-xl border bg-card p-3
+                    Row(Modifier.fillMaxWidth().box(Radius.xl).padding(12.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                        Column(Modifier.weight(1f)) {
+                            Text(v.str("name") ?: "", style = T.base.medium)
+                            Text("${formatMoney(priceFor(variantId, v.num("price"), prices))} / ${v.str("unit") ?: ""} · المتاح ${formatNum(available(variantId))}", style = T.xs.muted)
                         }
+                        QtyStepper(qty[variantId] ?: 0.0) { qty[variantId] = it }
                     }
                 }
             }
+            // space-y-3 rounded-2xl bg-card p-4 shadow-soft
             IceCard {
                 Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                        Text("الإجمالي الجديد", fontSize = 18.sp, fontWeight = FontWeight.Bold)
-                        Text(formatMoney(totals.total), fontSize = 18.sp, fontWeight = FontWeight.Bold)
+                        Text("الإجمالي الجديد", style = T.lg.bold)
+                        Text(formatMoney(totals.total), style = T.lg.bold)
                     }
-                    Field(cash ?: "", { cash = it }, "المبلغ المدفوع نقداً", numeric = true, large = true)
+                    Column {
+                        Text("المبلغ المدفوع نقداً", style = T.sm.muted.copy(lineHeight = 24.sp))
+                        Input(cash ?: "", { cash = it }, placeholder = "0", height = 48.dp, style = T.lg, numeric = true)
+                    }
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                        Text("نقداً: ${formatMoney(totals.cashPaid)}", fontSize = 14.sp, fontWeight = FontWeight.Bold)
-                        Text("آجل: ${formatMoney(totals.creditAmount)}", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = Ice.destructive)
+                        Row { Text("نقداً: ", style = T.sm); Text(formatMoney(totals.cashPaid), style = T.sm.bold) }
+                        Row { Text("آجل: ", style = T.sm); Text(formatMoney(totals.creditAmount), style = T.sm.bold.color(Ice.destructive)) }
                     }
                 }
             }
         }
 
-        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-            Field(reason, { reason = it.take(500) }, "سبب الطلب (يظهر للمشرف)", singleLine = false)
-            Text(if (replace) "مثال: الكمية الصحيحة ٥ وليست ٨" else "مثال: الفاتورة سُجلت على عميل خطأ", fontSize = 12.sp, color = Ice.mutedText)
+        Column {
+            Text("سبب الطلب (يظهر للمشرف)", style = T.sm.muted.copy(lineHeight = 24.sp))
+            TextArea(reason, { reason = it.take(500) }, placeholder = if (replace) "مثال: الكمية الصحيحة ٥ وليست ٨" else "مثال: الفاتورة سُجلت على عميل خطأ", height = 96.dp)
         }
         Text(
             (if (replace) "تبقى الفاتورة الحالية سارية حتى الاعتماد. عند الاعتماد تُلغى وتحل مكانها الفاتورة المصحّحة برقم جديد."
             else "تبقى الفاتورة سارية حتى يعتمد المشرف أو المدير الطلب. عند الاعتماد تُلغى وتعود كمياتها لمخزون الشاحنة.") +
                 " لا يمكن إرسال إغلاق الحملة قبل مراجعة الطلب.",
-            fontSize = 12.sp, color = Ice.mutedText,
+            style = T.xs.muted,
         )
-        if (!online) Banner(Ice.warning.copy(alpha = 0.3f)) {
-            Text("إرسال الطلب يحتاج اتصالاً بالإنترنت.", Modifier.fillMaxWidth(), fontSize = 14.sp, textAlign = TextAlign.Center)
+        if (!online) Banner(Ice.warning.copy(alpha = 0.3f), radius = Radius.lg, padding = 8.dp) {
+            Text("إرسال الطلب يحتاج اتصالاً بالإنترنت.", Modifier.fillMaxWidth(), textAlign = TextAlign.Center)
         }
         val enabled = !operation.busy && online && reason.isNotBlank() && (!replace || lines.isNotEmpty())
         val submit = {
@@ -399,11 +422,14 @@ fun InvoiceChangeScreen(id: String, kind: String) {
                 nav.replace(Screen.InvoiceChanges)
             }
         }
-        if (replace) BigButton("إرسال طلب التعديل", enabled = enabled, onClick = submit)
-        else MidButton("إرسال طلب الإلغاء", Modifier.fillMaxWidth(), enabled = enabled, danger = true, onClick = submit)
-        MidButton("رجوع للفاتورة", Modifier.fillMaxWidth(), outlined = true) {
+        // Button.h-14.w-full.text-lg, destructive for a cancellation
+        Btn(
+            if (replace) "إرسال طلب التعديل" else "إرسال طلب الإلغاء", submit, Modifier.fillMaxWidth(),
+            if (replace) Variant.Default else Variant.Destructive, enabled, height = 56.dp, style = T.lg.medium,
+        )
+        Btn("رجوع للفاتورة", {
             // Normally the invoice is the previous screen; otherwise open it in place.
             if (nav.stack.getOrNull(nav.stack.lastIndex - 1) == Screen.Invoice(id)) nav.back() else nav.replace(Screen.Invoice(id))
-        }
+        }, Modifier.fillMaxWidth(), Variant.Secondary, height = 48.dp)
     }
 }

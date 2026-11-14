@@ -1,20 +1,20 @@
 package com.tamimi.naqiice.ui
 
-import android.app.DatePickerDialog
-import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -24,27 +24,24 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
-import com.tamimi.naqiice.core.TrackPoint
 import com.tamimi.naqiice.core.adenDay
-import com.tamimi.naqiice.core.adenTime
 import com.tamimi.naqiice.core.campaignConflictMessage
 import com.tamimi.naqiice.core.formatDate
 import com.tamimi.naqiice.core.formatMoney
 import com.tamimi.naqiice.core.formatNum
 import com.tamimi.naqiice.core.jnum
 import com.tamimi.naqiice.core.num
-import com.tamimi.naqiice.core.numOrNull
 import com.tamimi.naqiice.core.obj
 import com.tamimi.naqiice.core.openBlock
 import com.tamimi.naqiice.core.openForTruck
 import com.tamimi.naqiice.core.parseNumber
 import com.tamimi.naqiice.core.remainingStock
-import com.tamimi.naqiice.core.routeSummary
 import com.tamimi.naqiice.core.rows
 import com.tamimi.naqiice.core.str
 import com.tamimi.naqiice.data.ApiError
@@ -54,8 +51,6 @@ import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 import java.io.IOException
-import java.util.Locale
-import kotlin.math.roundToLong
 import com.tamimi.naqiice.core.Row as DataRow
 
 /** PostgREST embeds a closing as an object or a one-element list depending on the relation. */
@@ -72,7 +67,6 @@ private class TripsData(
 fun TripsScreen() {
     val repo = LocalRepo.current
     val nav = LocalNav.current
-    val context = LocalContext.current
     val operation = rememberOperation()
     val toast = rememberToast()
     var date by remember { mutableStateOf(adenDay()) }
@@ -107,13 +101,9 @@ fun TripsScreen() {
         toast("تم فتح الحملة")
     }
 
-    Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
-        PageTitle("الشاحنات") {
-            MidButton(date, outlined = true) {
-                val parts = date.split("-").mapNotNull { it.toIntOrNull() }
-                if (parts.size == 3) DatePickerDialog(context, { _, y, m, d -> date = String.format(Locale.US, "%04d-%02d-%02d", y, m + 1, d) }, parts[0], parts[1] - 1, parts[2]).show()
-            }
-        }
+    // div.space-y-4
+    Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
+        PageTitle("الشاحنات") { DateInput(date, Modifier.width(160.dp)) { date = it } }
         val data = load.data
         if (load.error != null) LoadError(load.error, load.reload)
         else if (data == null) Empty("جارٍ التحميل…")
@@ -126,38 +116,52 @@ fun TripsScreen() {
             val chosen = pick[truckId] ?: default
             val distBlock = if (chosen.isNullOrEmpty()) null else openBlock(data.openTrips.filter { it.str("truck_id") != truckId }, truckId, chosen)
             fun name(id: String?) = data.profiles.firstOrNull { it.str("id") == id }?.str("full_name") ?: "بدون موزع"
-            IceCard {
-                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    Row(verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                        Text(truck.str("name") ?: "", fontSize = 18.sp, fontWeight = FontWeight.Bold)
-                        Text(truck.str("code") ?: "", fontSize = 12.sp, color = Ice.mutedText)
+            // space-y-3 rounded-2xl border border-border bg-card p-4 shadow-soft
+            Column(Modifier.fillMaxWidth().box(Radius.xl2, shadow = true).padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Row { Inline("${truck.str("name") ?: ""} ", T.lg.bold, truck.str("code") ?: "", T.xs.bold.muted) }
+                trips.forEachIndexed { index, trip ->
+                    val total = trip.rows("sales").sumOf { it.num("total") }
+                    val closing = trip.closing()
+                    val state = when {
+                        trip.str("status") == "closed" -> "مغلقة نهائياً"
+                        closing != null -> if (closing.str("status") == "flagged") "أُعيدت للموزع" else "بانتظار اعتماد الإغلاق"
+                        trip.str("loading_approved_at") != null -> "جارية (التحميل معتمد)"
+                        else -> "بانتظار اعتماد الموزع للتحميل"
                     }
-                    trips.forEachIndexed { index, trip ->
-                        val total = trip.rows("sales").sumOf { it.num("total") }
-                        val closing = trip.closing()
-                        val state = when {
-                            trip.str("status") == "closed" -> "مغلقة نهائياً"
-                            closing != null -> if (closing.str("status") == "flagged") "أُعيدت للموزع" else "بانتظار اعتماد الإغلاق"
-                            trip.str("loading_approved_at") != null -> "جارية (التحميل معتمد)"
-                            else -> "بانتظار اعتماد الموزع للتحميل"
-                        }
-                        LinkRow("حملة ${index + 1} · ${name(trip.str("distributor_id"))}", "$state · ${formatMoney(total)}") { trip.str("id")?.let { nav.go(Screen.Trip(it)) } }
+                    TripLink("حملة ${index + 1} · ${name(trip.str("distributor_id"))}", "$state · ${formatMoney(total)}") { trip.str("id")?.let { nav.go(Screen.Trip(it)) } }
+                }
+                otherOpen.forEach { trip ->
+                    TripLink("حملة مفتوحة بتاريخ ${trip.str("trip_date")} · ${name(trip.str("distributor_id"))}", "يجب إغلاقها قبل فتح حملة جديدة", highlighted = true) {
+                        trip.str("id")?.let { nav.go(Screen.Trip(it)) }
                     }
-                    otherOpen.forEach { trip ->
-                        LinkRow("حملة مفتوحة بتاريخ ${trip.str("trip_date")} · ${name(trip.str("distributor_id"))}", "يجب إغلاقها قبل فتح حملة جديدة", highlighted = true) {
-                            trip.str("id")?.let { nav.go(Screen.Trip(it)) }
-                        }
-                    }
-                    if (!hasOpen) {
-                        if (distBlock != null) Text(distBlock, fontSize = 14.sp, color = Ice.destructive)
-                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            Picker("اختر الموزع", data.distributors.mapNotNull { d -> d.str("id")?.let { it to (d.str("full_name") ?: "") } }, chosen, Modifier.weight(1f)) { pick[truckId] = it }
-                            MidButton("فتح حملة", enabled = distBlock == null && !operation.busy) { open(truckId, default) }
-                        }
-                    }
+                }
+                if (!hasOpen && distBlock != null) Text(distBlock, style = T.sm.color(Ice.destructive))
+                // div.flex.gap-2: the h-10 select and the h-9 button, top-aligned
+                if (!hasOpen) Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    SmallSelect(
+                        data.distributors.mapNotNull { d -> d.str("id")?.let { it to (d.str("full_name") ?: "") } }, chosen, Modifier.weight(1f), placeholder = "اختر الموزع",
+                    ) { pick[truckId] = it }
+                    SmallBtn("فتح حملة", { open(truckId, default) }, enabled = distBlock == null && !operation.busy)
                 }
             }
         }
+    }
+}
+
+/** a.flex.items-center.justify-between.rounded-xl.border.p-3.text-sm with a `size-4` chevron. */
+@Composable
+private fun TripLink(title: String, subtitle: String, highlighted: Boolean = false, onClick: () -> Unit) {
+    Row(
+        Modifier.fillMaxWidth()
+            .box(Radius.xl, if (highlighted) Ice.primary.copy(alpha = 0.05f) else null, if (highlighted) Ice.primary.copy(alpha = 0.4f) else Ice.border)
+            .tap(onClick = onClick).padding(12.dp),
+        verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween,
+    ) {
+        Column(Modifier.weight(1f)) {
+            Text(title, style = T.sm.bold)
+            Text(subtitle, style = T.sm.muted)
+        }
+        Icon(Lucide.ChevronLeft, null, Modifier.size(16.dp), tint = Ice.foreground)
     }
 }
 
@@ -168,15 +172,12 @@ private val LOAD_KINDS = listOf("load" to "تحميل", "return" to "مرتجع"
 private class TripData(
     val trip: DataRow, val variants: List<DataRow>, val stock: List<DataRow>, val loads: List<DataRow>,
     val sales: List<DataRow>, val expenses: List<DataRow>, val payments: List<DataRow>,
-    /** Null when the route could not be read; the rest of the campaign still shows. */
-    val points: List<TrackPoint>?,
 )
 
 @Composable
 fun TripScreen(id: String) {
     val repo = LocalRepo.current
     val nav = LocalNav.current
-    val context = LocalContext.current
     val operation = rememberOperation()
     val toast = rememberToast()
     var kind by remember { mutableStateOf("load") }
@@ -192,16 +193,9 @@ fun TripScreen(id: String) {
             val sales = async { api.select("sales", "select=*,customers(name)&trip_id=eq.$id&order=created_at.desc", bearer) }
             val expenses = async { api.select("expenses", "select=*&trip_id=eq.$id", bearer) }
             val payments = async { api.select("payments", "select=*&trip_id=eq.$id", bearer) }
-            val points = async {
-                try {
-                    api.selectAll("gps_points", "select=id,trip_id,lat,lng,recorded_at&trip_id=eq.$id&order=recorded_at,id", bearer).mapNotNull { p ->
-                        TrackPoint(p.numOrNull("lat") ?: return@mapNotNull null, p.numOrNull("lng") ?: return@mapNotNull null, p.str("recorded_at") ?: return@mapNotNull null)
-                    }
-                } catch (e: ApiError) { null } catch (e: IOException) { null }
-            }
             TripData(
                 trip.await() ?: throw ApiError(404, null, "الحملة غير متاحة لهذا الحساب"),
-                variants.await(), stock.await(), loads.await(), sales.await(), expenses.await(), payments.await(), points.await(),
+                variants.await(), stock.await(), loads.await(), sales.await(), expenses.await(), payments.await(),
             )
         }
     }
@@ -217,8 +211,11 @@ fun TripScreen(id: String) {
     val loadingApproved = trip.str("loading_approved_at") != null
     val pendingLoads = data.loads.count { it.str("kind") == "load" && it.str("approved_at") == null }
 
-    Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
-        PageTitle("${trip.obj("trucks")?.str("name") ?: ""} — ${trip.str("trip_date") ?: ""}")
+    // div.space-y-5
+    Column(verticalArrangement = Arrangement.spacedBy(20.dp)) {
+        PageTitle("${trip.obj("trucks")?.str("name") ?: ""} — ${trip.str("trip_date") ?: ""}", spacing = 20.dp)
+        // The route lives on the map page (web: /map?trip=<id>).
+        Btn("عرض خط السير", { nav.go(Screen.RouteMap) }, variant = Variant.Outline, height = 44.dp)
         Banner(if (closed) Ice.muted else if (pendingLoads > 0) Ice.warning.copy(alpha = 0.3f) else Ice.success.copy(alpha = 0.15f)) {
             Text(
                 when {
@@ -228,7 +225,6 @@ fun TripScreen(id: String) {
                     loadingApproved -> "اعتمد الموزع التحميل. أي كمية جديدة تُسجَّل كتحميل إضافي وتحتاج اعتماده."
                     else -> "احفظ التحميل ثم ينتظر اعتماد الموزع."
                 },
-                fontSize = 14.sp,
             )
         }
         StatGrid(listOf(
@@ -238,102 +234,134 @@ fun TripScreen(id: String) {
             Triple("مصروفات", formatMoney(data.expenses.sumOf { it.num("amount") }), Ice.onWarning),
         ))
 
-        if (!closed) IceCard {
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Choice(LOAD_KINDS, kind) { kind = it }
+        // section.rounded-2xl.border.bg-card.p-4
+        if (!closed) Column(Modifier.fillMaxWidth().box(Radius.xl2).padding(16.dp)) {
+            // grid grid-cols-3 gap-2 of `rounded-lg border p-2 text-sm font-medium`
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                LOAD_KINDS.forEach { (value, label) ->
+                    val on = kind == value
+                    Box(
+                        Modifier.weight(1f).box(Radius.lg, if (on) Ice.primary else null, if (on) Ice.primary else Ice.border).tap { kind = value }.padding(8.dp),
+                        contentAlignment = Alignment.Center,
+                    ) { Text(label, style = T.sm.medium.color(if (on) Ice.onPrimary else Ice.foreground), maxLines = 1) }
+                }
+            }
+            Column(Modifier.padding(top = 12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 data.variants.forEach { v ->
                     val variantId = v.str("id") ?: return@forEach
                     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Text(v.str("name") ?: "", Modifier.weight(1f), fontSize = 14.sp)
-                        Field(qty[variantId] ?: "", { qty[variantId] = it }, "الكمية", Modifier.width(120.dp), numeric = true)
+                        Text(v.str("name") ?: "", Modifier.weight(1f), style = T.sm)
+                        Input(qty[variantId] ?: "", { qty[variantId] = it }, Modifier.width(96.dp), placeholder = "0", height = 44.dp, numeric = true, center = true)
                     }
                 }
-                BigButton("حفظ " + if (kind == "load" && loadingApproved) "تحميل إضافي" else kindLabel(kind), enabled = !operation.busy) {
-                    operation.run {
-                        val rows = qty.entries.filter { parseNumber(it.value) > 0 }.map { (variantId, value) ->
-                            buildJsonObject { put("trip_id", id); put("variant_id", variantId); put("qty", jnum(parseNumber(value))); put("kind", kind) }
+            }
+            Btn("حفظ " + if (kind == "load" && loadingApproved) "تحميل إضافي" else kindLabel(kind), {
+                operation.run {
+                    val rows = qty.entries.filter { parseNumber(it.value) > 0 }.map { (variantId, value) ->
+                        buildJsonObject { put("trip_id", id); put("variant_id", variantId); put("qty", jnum(parseNumber(value))); put("kind", kind) }
+                    }
+                    if (rows.isEmpty()) throw Notice("أدخل كمية")
+                    repo.api.insert("trip_loads", JsonArray(rows), repo.api.token())
+                    qty.clear()
+                    toast("تم الحفظ")
+                    load.reload()
+                }
+            }, Modifier.padding(top = 12.dp).fillMaxWidth(), enabled = !operation.busy, height = 48.dp)
+        }
+
+        Column {
+            SectionTitle("المخزون")
+            StockTable(
+                data.stock.filter { it.num("loaded") != 0.0 || it.num("sold") != 0.0 }.map { s ->
+                    listOf(variantName(s.str("variant_id"))) + listOf("loaded", "sold", "returned", "damaged").map { formatNum(s.num(it)) } +
+                        formatNum(remainingStock(s.num("loaded"), s.num("sold"), s.num("returned"), s.num("damaged")))
+                },
+                closed,
+            )
+        }
+
+        Column {
+            SectionHead("الحركات", data.loads.isEmpty())
+            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                data.loads.forEach { l ->
+                    val isLoad = l.str("kind") == "load"
+                    val approved = l.str("approved_at") != null
+                    // flex items-center justify-between rounded-lg border bg-card px-3 py-2 text-sm
+                    Row(
+                        Modifier.fillMaxWidth().box(Radius.lg).padding(horizontal = 12.dp, vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween,
+                    ) {
+                        Row(Modifier.weight(1f)) {
+                            Inline(
+                                "${kindLabel(l.str("kind"))} · ${variantName(l.str("variant_id"))} × ${formatNum(l.num("qty"))} ", T.sm,
+                                if (isLoad) (if (approved) "(معتمد)" else "(بانتظار الموزع)") else null, T.xs.color(if (approved) Ice.success else Ice.onWarning),
+                            )
                         }
-                        if (rows.isEmpty()) throw Notice("أدخل كمية")
-                        repo.api.insert("trip_loads", JsonArray(rows), repo.api.token())
-                        qty.clear()
-                        toast("تم الحفظ")
-                        load.reload()
+                        if ((!isLoad || !approved) && !closed) Icon(
+                            Lucide.Trash2, "حذف",
+                            Modifier.size(16.dp).tap(enabled = !operation.busy) {
+                                operation.run {
+                                    repo.api.delete("trip_loads", "id=eq.${l.str("id")}", repo.api.token())
+                                    load.reload()
+                                }
+                            },
+                            tint = Ice.destructive,
+                        )
                     }
                 }
             }
         }
 
         Column {
-            SectionTitle("المخزون")
-            IceCard {
-                Column {
-                    Row(Modifier.fillMaxWidth().padding(bottom = 6.dp)) {
-                        Text("الصنف", Modifier.weight(2f), fontSize = 13.sp, color = Ice.mutedText)
-                        listOf("محمّل", "مباع", "مرتجع", "تالف", "المتبقي").forEach { Text(it, Modifier.weight(1f), fontSize = 13.sp, color = Ice.mutedText, textAlign = TextAlign.Center) }
-                    }
-                    data.stock.filter { it.num("loaded") != 0.0 || it.num("sold") != 0.0 }.forEach { s ->
-                        val remaining = remainingStock(s.num("loaded"), s.num("sold"), s.num("returned"), s.num("damaged"))
-                        HorizontalDivider(color = Ice.border)
-                        Row(Modifier.fillMaxWidth().padding(vertical = 8.dp)) {
-                            Text(variantName(s.str("variant_id")), Modifier.weight(2f), fontSize = 14.sp)
-                            listOf("loaded", "sold", "returned", "damaged").forEach { Text(formatNum(s.num(it)), Modifier.weight(1f), fontSize = 14.sp, textAlign = TextAlign.Center) }
-                            Text(formatNum(remaining), Modifier.weight(1f), fontSize = 14.sp, fontWeight = FontWeight.Bold, textAlign = TextAlign.Center, color = if (remaining != 0.0 && closed) Ice.destructive else Ice.foreground)
-                        }
+            SectionHead("الفواتير (${data.sales.size})", data.sales.isEmpty())
+            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                data.sales.forEach { s ->
+                    // flex justify-between rounded-lg border bg-card px-3 py-2 text-sm
+                    Row(
+                        Modifier.fillMaxWidth().box(Radius.lg).tap { s.str("id")?.let { nav.go(Screen.Invoice(it)) } }.padding(horizontal = 12.dp, vertical = 8.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                    ) {
+                        Row(Modifier.weight(1f)) { Inline("${s.obj("customers")?.str("name") ?: ""} ", T.sm, formatDate(s.str("created_at")), T.xs.muted) }
+                        Text(formatMoney(s.num("total")), style = T.sm.bold)
                     }
                 }
             }
         }
+    }
+}
 
-        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-            SectionTitle("الحركات")
-            data.loads.forEach { l ->
-                val isLoad = l.str("kind") == "load"
-                val approved = l.str("approved_at") != null
-                Surface(Modifier.fillMaxWidth(), shape = RoundedCornerShape(8.dp), color = Ice.card, border = BorderStroke(1.dp, Ice.border)) {
-                    Row(Modifier.padding(horizontal = 12.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Text("${kindLabel(l.str("kind"))} · ${variantName(l.str("variant_id"))} × ${formatNum(l.num("qty"))}", Modifier.padding(vertical = 6.dp), fontSize = 14.sp)
-                        if (isLoad) Text(if (approved) " (معتمد)" else " (بانتظار الموزع)", fontSize = 12.sp, color = if (approved) Ice.success else Ice.onWarning)
-                        Grow()
-                        if ((!isLoad || !approved) && !closed) IconButton({
-                            operation.run {
-                                repo.api.delete("trip_loads", "id=eq.${l.str("id")}", repo.api.token())
-                                load.reload()
-                            }
-                        }, enabled = !operation.busy) { Icon(Icons.Filled.Delete, "حذف", tint = Ice.destructive) }
-                    }
-                }
-            }
+private val STOCK_HEADERS = listOf("الصنف", "محمّل", "مباع", "مرتجع", "تالف", "المتبقي")
+
+/**
+ * `table.w-full.text-sm` inside `overflow-x-auto rounded-2xl border bg-card`. A browser gives
+ * each column a share of the width in proportion to its widest cell; so do the weights here.
+ */
+@Composable
+private fun StockTable(rows: List<List<String>>, closed: Boolean) {
+    val measurer = rememberTextMeasurer()
+    val density = LocalDensity.current
+    val weights = remember(rows, density) {
+        STOCK_HEADERS.indices.map { c ->
+            fun width(text: String, style: TextStyle) = measurer.measure(text, style, maxLines = 1).size.width.toFloat()
+            val widest = maxOf(width(STOCK_HEADERS[c], T.sm.bold), rows.maxOfOrNull { width(it[c], if (c == 5) T.sm.bold else T.sm) } ?: 0f)
+            (widest + if (c == 0) with(density) { 16.dp.toPx() } else 0f).coerceAtLeast(1f)
         }
-
-        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            SectionTitle("خط السير")
-            val points = data.points
-            if (points == null) Text("تعذّر تحميل المسارات", fontSize = 14.sp, color = Ice.destructive)
-            else {
-                val summary = routeSummary(points)
-                if (points.isEmpty()) Text("لا توجد نقاط تتبع محفوظة لهذه الحملة", fontSize = 14.sp, color = Ice.mutedText)
-                Text("فجوات التتبع: ${summary.gaps} · الوقت غير المتتبع: ${summary.untrackedMinutes.roundToLong()} دقيقة", fontSize = 14.sp)
-                StatGrid(listOf(
-                    Triple("بداية التتبع", adenTime(summary.start), Ice.foreground),
-                    Triple("نهاية التتبع", adenTime(summary.end), Ice.foreground),
-                    Triple("المدة", "${summary.minutes.roundToLong()} دقيقة", Ice.foreground),
-                    Triple("المسافة التقريبية", "${String.format(Locale.US, "%.2f", summary.km)} كم", Ice.foreground),
-                    Triple("نقاط التتبع", "${summary.count}", Ice.foreground),
-                    Triple("التوقفات / الفواتير", "${data.sales.size}", Ice.foreground),
-                ))
-                // The query is ordered by time, so the last row is the newest position.
-                points.lastOrNull()?.let { last ->
-                    MidButton((if (trip.str("status") == "open") "آخر موقع للشاحنة" else "نهاية المسار") + " — فتح في الخرائط", Modifier.fillMaxWidth(), outlined = true) {
-                        if (!openUrl(context, "geo:${last.lat},${last.lng}?q=${last.lat},${last.lng}")) toast("تعذّر فتح الخرائط")
-                    }
-                }
-            }
+    }
+    @Composable
+    fun RowScope.Cell(c: Int, text: String, style: TextStyle) {
+        // Only the first column has `p-2 text-right`; the others are bare and centred.
+        Text(text, Modifier.weight(weights[c]).padding(if (c == 0) 8.dp else 0.dp), style = style, textAlign = if (c == 0) TextAlign.Start else TextAlign.Center)
+    }
+    Column(Modifier.fillMaxWidth().box(Radius.xl2).clip(RoundedCornerShape(Radius.xl2 - 1.dp))) {
+        Row(Modifier.fillMaxWidth().background(Ice.muted), verticalAlignment = Alignment.CenterVertically) {
+            STOCK_HEADERS.forEachIndexed { c, header -> Cell(c, header, T.sm.bold.muted) }
         }
-
-        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-            SectionTitle("الفواتير (${data.sales.size})")
-            data.sales.forEach { s ->
-                LinkRow(s.obj("customers")?.str("name") ?: "", formatDate(s.str("created_at")), end = formatMoney(s.num("total"))) { s.str("id")?.let { nav.go(Screen.Invoice(it)) } }
+        rows.forEach { row ->
+            Divider()
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                row.forEachIndexed { c, text ->
+                    Cell(c, text, if (c == 5) T.sm.bold.color(if (closed && text != formatNum(0.0)) Ice.destructive else Ice.foreground) else T.sm)
+                }
             }
         }
     }
@@ -367,49 +395,54 @@ fun ClosingsScreen() {
         load.reload()
     }
 
+    // div.space-y-3
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        PageTitle("إغلاقات اليوم")
+        PageTitle("إغلاقات اليوم", spacing = 12.dp)
         val data = load.data
         if (load.error != null) LoadError(load.error, load.reload)
-        else if (data == null) Empty("جارٍ التحميل…")
-        else if (data.first.isEmpty()) Empty("لا توجد إغلاقات")
+        // As on the web, the empty box also stands in while the list is loading.
+        else if (data == null || data.first.isEmpty()) Empty("لا توجد إغلاقات")
         else data.first.forEach { c ->
             val closingId = c.str("id") ?: return@forEach
             val status = c.str("status")
             val deposits = data.second.filter { it.str("trip_id") != null && it.str("trip_id") == c.str("trip_id") }
-            IceCard {
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text("${c.obj("trips")?.obj("trucks")?.str("name") ?: ""} — ${c.obj("trips")?.str("trip_date") ?: ""}", Modifier.weight(1f), fontWeight = FontWeight.Bold)
-                        when (status) {
-                            "approved" -> Chip(CLOSING_STATUS[status] ?: "", Ice.success.copy(alpha = 0.15f), Ice.success)
-                            "flagged" -> Chip(CLOSING_STATUS[status] ?: "", Ice.destructive.copy(alpha = 0.1f), Ice.destructive)
-                            else -> Chip(CLOSING_STATUS[status] ?: "", Ice.warning.copy(alpha = 0.3f))
+            // rounded-2xl border border-border bg-card p-4 shadow-soft
+            Column(Modifier.fillMaxWidth().box(Radius.xl2, shadow = true).padding(16.dp)) {
+                // div.flex.justify-between: the chip stretches to the title's line height
+                Row(Modifier.fillMaxWidth().height(IntrinsicSize.Min), horizontalArrangement = Arrangement.SpaceBetween) {
+                    Text("${c.obj("trips")?.obj("trucks")?.str("name") ?: ""} — ${c.obj("trips")?.str("trip_date") ?: ""}", Modifier.weight(1f, fill = false), style = T.base.bold)
+                    when (status) {
+                        "approved" -> Chip(CLOSING_STATUS[status] ?: "", Ice.success.copy(alpha = 0.15f), Ice.success, Modifier.fillMaxHeight())
+                        "flagged" -> Chip(CLOSING_STATUS[status] ?: "", Ice.destructive.copy(alpha = 0.1f), Ice.destructive, Modifier.fillMaxHeight())
+                        else -> Chip(CLOSING_STATUS[status] ?: "", Ice.warning.copy(alpha = 0.3f), modifier = Modifier.fillMaxHeight())
+                    }
+                }
+                // mt-2 grid grid-cols-3 gap-2 text-sm
+                Row(Modifier.padding(top = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    listOf("المتوقع" to "expected_cash", "المعدود" to "counted_cash", "الفرق" to "difference").forEach { (label, key) ->
+                        Column(Modifier.weight(1f)) {
+                            Text(label, style = T.sm)
+                            Text(formatMoney(c.num(key)), style = T.sm.bold.color(if (key == "difference" && c.num(key) < 0) Ice.destructive else Ice.foreground))
                         }
                     }
-                    Row {
-                        listOf("المتوقع" to "expected_cash", "المعدود" to "counted_cash", "الفرق" to "difference").forEach { (label, key) ->
-                            Column(Modifier.weight(1f)) {
-                                Text(label, fontSize = 14.sp)
-                                Text(formatMoney(c.num(key)), fontSize = 14.sp, fontWeight = FontWeight.Bold, color = if (key == "difference" && c.num(key) < 0) Ice.destructive else Ice.foreground)
-                            }
-                        }
-                    }
-                    c.str("review_note")?.takeIf { it.isNotEmpty() }?.let { Text("ملاحظة المراجعة: $it", fontSize = 14.sp, color = Ice.destructive) }
-                    c.str("notes")?.takeIf { it.isNotEmpty() }?.let { Text(it, fontSize = 14.sp, color = Ice.mutedText) }
-                    Row { Text("إيداعات: ", fontSize = 14.sp); Text(formatMoney(deposits.sumOf { it.num("amount") }), fontSize = 14.sp, fontWeight = FontWeight.Bold) }
-                    deposits.forEach { DepositSlipButton(it.str("slip_path")) }
-                    Text(formatDate(c.str("created_at")), fontSize = 12.sp, color = Ice.mutedText)
-                    if (status == "submitted") Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        MidButton("اعتماد", Modifier.weight(1f), enabled = !operation.busy) { review(closingId, "approved", null) }
-                        MidButton("يحتاج مراجعة", Modifier.weight(1f), enabled = !operation.busy, danger = true) { flagging = closingId }
-                    }
+                }
+                c.str("review_note")?.takeIf { it.isNotEmpty() }?.let { Text("ملاحظة المراجعة: $it", Modifier.padding(top = 8.dp), style = T.sm.color(Ice.destructive)) }
+                c.str("notes")?.takeIf { it.isNotEmpty() }?.let { Text(it, Modifier.padding(top = 8.dp), style = T.sm.muted) }
+                Row(Modifier.padding(top = 8.dp)) {
+                    Text("إيداعات: ", style = T.sm)
+                    Text(formatMoney(deposits.sumOf { it.num("amount") }), style = T.sm.bold)
+                }
+                deposits.forEach { DepositSlipButton(it.str("slip_path")) }
+                Text(formatDate(c.str("created_at")), Modifier.padding(top = 4.dp), style = T.xs.muted)
+                if (status == "submitted") Row(Modifier.padding(top = 12.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    SmallBtn("اعتماد", { review(closingId, "approved", null) }, Modifier.weight(1f), enabled = !operation.busy)
+                    SmallBtn("يحتاج مراجعة", { flagging = closingId }, Modifier.weight(1f), Variant.Destructive, enabled = !operation.busy)
                 }
             }
         }
     }
 
     flagging?.let { closingId ->
-        ReasonDialog("سبب الإعادة للموزع (ما الذي يجب تصحيحه؟)", "يحتاج مراجعة", { flagging = null }) { note -> flagging = null; review(closingId, "flagged", note) }
+        ReasonDialog("سبب الإعادة للموزع (ما الذي يجب تصحيحه؟)", "موافق", { flagging = null }) { note -> flagging = null; review(closingId, "flagged", note) }
     }
 }
