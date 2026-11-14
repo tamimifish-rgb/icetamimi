@@ -178,9 +178,9 @@ fun AppShell(me: Me) {
     }
 
     Column(Modifier.fillMaxSize().background(Ice.background)) {
-        // header: sticky bg-ice px-4 pb-3 pt-[max(0.75rem, safe-area)] shadow-soft
+        // header: sticky bg-ice px-4 py-3 shadow-soft, continued up behind the status bar
         Row(
-            Modifier.fillMaxWidth().softShadow(0.dp).background(Ice.gradient).padding(start = 16.dp, end = 16.dp, top = maxOf(12.dp, statusBar), bottom = 12.dp),
+            Modifier.fillMaxWidth().softShadow(0.dp).background(Ice.gradient).padding(start = 16.dp, end = 16.dp, top = statusBar + 12.dp, bottom = 12.dp),
             verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             Image(painterResource(R.drawable.logo), "ثلج نقي", Modifier.size(44.dp))
@@ -274,7 +274,10 @@ private fun ScreenContent(screen: Screen, me: Me) {
 
 @Composable
 private fun Guard(allowed: Boolean, content: @Composable () -> Unit) {
-    if (allowed) content() else Empty("ليست لديك صلاحية لهذه الصفحة.")
+    // RequireRole: rounded-xl bg-muted p-6 text-center text-muted-foreground
+    if (allowed) content() else Box(Modifier.fillMaxWidth().background(Ice.muted, RoundedCornerShape(Radius.xl)).padding(24.dp), contentAlignment = Alignment.Center) {
+        Text("ليست لديك صلاحية لهذه الصفحة.", style = T.base.muted, textAlign = TextAlign.Center)
+    }
 }
 
 // ---- dialogs --------------------------------------------------------------------------

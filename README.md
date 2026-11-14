@@ -50,7 +50,7 @@ Or open the folder in Android Studio and run the `app` configuration.
 ### Release and updating the installed app
 
 The package is `com.tamimi.naqiice`, the same as the earlier builds, with
-`versionCode 201`. To install it **over** the existing app it must be signed with the
+`versionCode 202`. To install it **over** the existing app it must be signed with the
 same owner keystore (Android Studio → Build → Generate Signed App Bundle / APK). Keep
 the keystore and its passwords outside this repository.
 
