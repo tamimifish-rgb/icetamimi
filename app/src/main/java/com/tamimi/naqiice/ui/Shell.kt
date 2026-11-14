@@ -148,12 +148,12 @@ private fun navItems(role: String?): List<NavItem> = when (role) {
     )
     "supervisor" -> listOf(
         NavItem(Screen.Trips, "الشاحنات", Lucide.Truck), NavItem(Screen.Closings, "الإغلاقات", Lucide.ClipboardCheck),
-        NavItem(Screen.Reports, "التقارير", Lucide.BarChart3), NavItem(Screen.RouteMap, "الخريطة", Lucide.Map),
+        NavItem(Screen.Reports, "التقارير", Lucide.BarChart3), NavItem(Screen.RouteMap(), "الخريطة", Lucide.Map),
         NavItem(Screen.Customers, "العملاء", Lucide.Users),
     )
     "admin" -> listOf(
         NavItem(Screen.Admin, "الرئيسية", Lucide.Home), NavItem(Screen.Trips, "الشاحنات", Lucide.Truck),
-        NavItem(Screen.Reports, "التقارير", Lucide.BarChart3), NavItem(Screen.RouteMap, "الخريطة", Lucide.Map),
+        NavItem(Screen.Reports, "التقارير", Lucide.BarChart3), NavItem(Screen.RouteMap(), "الخريطة", Lucide.Map),
         NavItem(Screen.AdminSetup, "الإعدادات", Lucide.Settings),
     )
     else -> emptyList()
@@ -259,7 +259,7 @@ private fun ScreenContent(screen: Screen, me: Me) {
         is Screen.Trip -> Guard(me.isManager) { TripScreen(screen.id) }
         Screen.Closings -> Guard(me.isManager) { ClosingsScreen() }
         Screen.Reports -> Guard(me.isManager) { ReportsScreen() }
-        Screen.RouteMap -> Guard(me.isManager) { RouteMapScreen() }
+        is Screen.RouteMap -> Guard(me.isManager) { RouteMapScreen(screen.trip) }
         Screen.Admin -> Guard(me.isAdmin) { AdminHomeScreen() }
         Screen.AdminSetup -> Guard(me.isAdmin) { AdminSetupScreen() }
         Screen.AdminProducts -> Guard(me.isAdmin) { AdminProductsScreen() }

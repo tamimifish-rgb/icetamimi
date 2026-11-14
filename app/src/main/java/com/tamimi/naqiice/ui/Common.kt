@@ -236,7 +236,9 @@ fun Text(
         (measurer.measure("ا", merged, density = density).size.height - with(density) { merged.lineHeight.roundToPx() }).coerceAtLeast(0)
     }
     val trimmed = if (extra == 0) modifier else modifier.layout { measurable, constraints ->
-        val placeable = measurable.measure(constraints)
+        // Measured without a height limit: inside a fixed-height button the untrimmed line is
+        // taller than the room it is given, and a clipped measure would shift the glyphs down.
+        val placeable = measurable.measure(constraints.copy(minHeight = 0, maxHeight = androidx.compose.ui.unit.Constraints.Infinity))
         layout(placeable.width, (placeable.height - extra).coerceAtLeast(0)) { placeable.place(0, -(extra / 2)) }
     }
     M3Text(
@@ -321,7 +323,8 @@ sealed interface Screen {
     data class Trip(val id: String) : Screen
     data object Closings : Screen
     data object Reports : Screen
-    data object RouteMap : Screen
+    /** The route map; [trip] opens it on one campaign (the web's `/map?trip=<id>`). */
+    data class RouteMap(val trip: String? = null) : Screen
     data object Admin : Screen
     data object AdminSetup : Screen
     data object AdminProducts : Screen
@@ -412,7 +415,7 @@ fun Btn(
     if (minHeight > 0.dp && height != null) m = m.heightIn(min = minHeight)
     if (variant != Variant.Ghost && variant != Variant.Link) m = m.smallShadow(radius)
     m = m.clip(RoundedCornerShape(radius)).background(background)
-    if (variant == Variant.Outline) m = m.border(1.dp, Ice.input, RoundedCornerShape(radius))
+    if (variant == Variant.Outline) m = m.border(1.dp, Ice.input, RoundedCornerShape(radius)).padding(horizontal = 1.dp)
     Row(m.clickable(enabled = enabled, onClick = onClick).padding(padding), horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally), verticalAlignment = Alignment.CenterVertically) {
         CompositionLocalProvider(LocalContentColor provides foreground) { ProvideTextStyle(style.copy(color = foreground)) { content() } }
     }

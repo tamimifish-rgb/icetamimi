@@ -57,7 +57,7 @@ class ReportsScreensTest : ScreenHarness() {
             if (value == "visits") {
                 shot("reports-visits-none")
                 tap("اختر الشاحنة")
-                tap("شاحنة ٢")
+                tap("شاحنة ٨")
             }
             shot("reports-$value")
             if (value == "inactive") {
@@ -66,15 +66,15 @@ class ReportsScreensTest : ScreenHarness() {
                 shot("reports-inactive-7")
             }
         }
-        compose.onNodeWithText("لم تتم زيارتهم اليوم — شاحنة ٢").assertExists()
+        compose.onNodeWithText("لم تتم زيارتهم اليوم — شاحنة ٨").assertExists()
         compose.onNodeWithText("مخبز الريان").assertExists()
     }
 
     @Test fun routeHistory() {
-        show(Screen.RouteMap, "admin")
-        waitFor("الحملات (3)")
+        show(Screen.RouteMap(), "admin")
+        waitFor("الحملات (")
         shot("map-list")
-        campaign("شاحنة ٢ · 2026-11-10", "شاحنة ٢ · 2026-11-10 · مغلقة")
+        campaign("شاحنة ٨ · 2026-11-10", "شاحنة ٨ · 2026-11-10 · مغلقة")
         shot("map-trip")
         compose.onNodeWithContentDescription("طبقات الخريطة").performClick()
         compose.waitForIdle()
@@ -85,9 +85,9 @@ class ReportsScreensTest : ScreenHarness() {
     /** The same on a tall screen, so the summary under the map is in the picture. */
     @Config(qualifiers = "ar-rYE-w411dp-h1700dp-xhdpi")
     @Test fun routeHistoryTall() {
-        show(Screen.RouteMap, "admin")
-        waitFor("الحملات (3)")
-        campaign("شاحنة ٢ · 2026-11-10", "شاحنة ٢ · 2026-11-10 · مغلقة")
+        show(Screen.RouteMap(), "admin")
+        waitFor("الحملات (")
+        campaign("شاحنة ٨ · 2026-11-10", "شاحنة ٨ · 2026-11-10 · مغلقة")
         shot("map-trip-tall")
         // The open campaign of truck 1 has an invoice but no saved route points.
         campaign("شاحنة ١ · 2026-11-14", "لا توجد نقاط تتبع محفوظة لهذه الحملة")

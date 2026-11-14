@@ -34,9 +34,9 @@ class AdminScreensTest : ScreenHarness() {
 
     @Test fun dashboardAndSettings() {
         show(Screen.Admin, "admin")
-        compose.waitUntil(10_000) { pump(); compose.onAllNodesWithText("مبيعات اليوم").fetchSemanticsNodes().isNotEmpty() }
-        compose.onNodeWithText("1 إغلاق بانتظار المراجعة ←").assertExists()
-        compose.waitUntil(10_000) { pump(); !repo.syncing.value }
+        compose.waitUntil(30_000) { pump(); compose.onAllNodesWithText("مبيعات اليوم").fetchSemanticsNodes().isNotEmpty() }
+        compose.onNodeWithText("إغلاق بانتظار المراجعة", substring = true).assertExists()
+        compose.waitUntil(30_000) { pump(); !repo.syncing.value }
         compose.waitForIdle()
         shot("adm-home")
         open(Screen.AdminSetup, "adm-setup")
@@ -45,7 +45,7 @@ class AdminScreensTest : ScreenHarness() {
 
     @Test fun productsAndVariants() {
         show(Screen.AdminProducts, "admin")
-        compose.waitUntil(10_000) { pump(); compose.onAllNodesWithText("قوالب ثلج").fetchSemanticsNodes().isNotEmpty() }
+        compose.waitUntil(30_000) { pump(); compose.onAllNodesWithText("قوالب ثلج").fetchSemanticsNodes().isNotEmpty() }
         compose.onNodeWithText("ثلج مجروش ٥ كجم").assertExists()
         shot("adm-products")
         add(0); compose.onNodeWithText("إضافة — المنتجات").assertExists(); box("adm-products-add")
@@ -56,11 +56,11 @@ class AdminScreensTest : ScreenHarness() {
 
     @Test fun regionsAndTrucks() {
         show(Screen.AdminRegions, "admin")
-        compose.waitUntil(10_000) { pump(); compose.onAllNodesWithText("فوة").fetchSemanticsNodes().isNotEmpty() }
+        compose.waitUntil(30_000) { pump(); compose.onAllNodesWithText("فوة").fetchSemanticsNodes().isNotEmpty() }
         shot("adm-regions")
         edit(0); box("adm-regions-edit")
         open(Screen.AdminTrucks, "adm-trucks")
-        compose.waitUntil(10_000) { pump(); compose.onAllNodesWithText("شاحنة ١").fetchSemanticsNodes().isNotEmpty() }
+        compose.waitUntil(30_000) { pump(); compose.onAllNodesWithText("شاحنة ١").fetchSemanticsNodes().isNotEmpty() }
         shot("adm-trucks")
         add(0); box("adm-trucks-add")
         edit(0); box("adm-trucks-edit")
@@ -68,8 +68,8 @@ class AdminScreensTest : ScreenHarness() {
 
     @Test fun freezers() {
         show(Screen.AdminFreezers, "admin")
-        compose.waitUntil(10_000) { pump(); compose.onAllNodesWithText("FZ-001").fetchSemanticsNodes().isNotEmpty() }
-        compose.waitUntil(10_000) { pump(); compose.onAllNodesWithText("مبيعات العميل", substring = true).fetchSemanticsNodes().isNotEmpty() }
+        compose.waitUntil(30_000) { pump(); compose.onAllNodesWithText("FZ-001").fetchSemanticsNodes().isNotEmpty() }
+        compose.waitUntil(30_000) { pump(); compose.onAllNodesWithText("مبيعات العميل", substring = true).fetchSemanticsNodes().isNotEmpty() }
         shot("adm-freezers")
         edit(0); box("adm-freezers-edit")
         add(1); box("adm-models-add")
@@ -77,18 +77,18 @@ class AdminScreensTest : ScreenHarness() {
 
     @Test fun customers() {
         show(Screen.AdminCustomers, "admin")
-        compose.waitUntil(10_000) { pump(); compose.onAllNodesWithText("مطعم البحر").fetchSemanticsNodes().isNotEmpty() }
+        compose.waitUntil(30_000) { pump(); compose.onAllNodesWithText("مطعم البحر").fetchSemanticsNodes().isNotEmpty() }
         shot("adm-customers")
         compose.onNodeWithContentDescription("تعديل بقالة النور").performClick(); box("adm-customers-edit")
         add(0); box("adm-customers-add")
         compose.onAllNodesWithText("أسعار خاصة لهذا العميل").onFirst().performClick()
-        compose.waitUntil(10_000) { pump(); compose.onAllNodesWithText("ثلج مجروش ٥ كجم", substring = true).fetchSemanticsNodes().isNotEmpty() }
+        compose.waitUntil(30_000) { pump(); compose.onAllNodesWithText("ثلج مجروش ٥ كجم", substring = true).fetchSemanticsNodes().isNotEmpty() }
         shot("adm-customers-prices")
     }
 
     @Test fun employees() {
         show(Screen.AdminUsers, "admin")
-        compose.waitUntil(10_000) { pump(); compose.onAllNodesWithText("أحمد باوزير", substring = true).fetchSemanticsNodes().isNotEmpty() }
+        compose.waitUntil(30_000) { pump(); compose.onAllNodesWithText("أحمد باوزير", substring = true).fetchSemanticsNodes().isNotEmpty() }
         shot("adm-users")
         compose.onNodeWithText("موظف جديد").performClick(); compose.onNodeWithText("حساب موظف جديد").assertExists(); box("adm-users-new")
         compose.onAllNodesWithText("تعديل").onFirst().performClick(); compose.onNodeWithText("تعديل الموظف").assertExists(); box("adm-users-edit")

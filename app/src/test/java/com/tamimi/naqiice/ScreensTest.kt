@@ -102,7 +102,7 @@ class ScreensTest : ScreenHarness() {
         show(Screen.Admin, "admin")
         val screens = listOf(
             Screen.Admin to "admin", Screen.Trips to "trips", Screen.Trip(FX_TRIP) to "trip", Screen.Closings to "closings",
-            Screen.Reports to "reports", Screen.RouteMap to "map", Screen.AdminSetup to "admin-setup", Screen.AdminProducts to "admin-products",
+            Screen.Reports to "reports", Screen.RouteMap() to "map", Screen.AdminSetup to "admin-setup", Screen.AdminProducts to "admin-products",
             Screen.AdminRegions to "admin-regions", Screen.AdminTrucks to "admin-trucks", Screen.AdminCustomers to "admin-customers",
             Screen.AdminFreezers to "admin-freezers", Screen.AdminUsers to "admin-users", Screen.AdminCompany to "admin-company",
             Screen.InvoiceChanges to "invoice-changes", Screen.InvoiceChange("s0", "cancel") to "invoice-change",

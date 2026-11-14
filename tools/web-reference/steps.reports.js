@@ -18,7 +18,7 @@ module.exports = async (page, name, shot) => {
       // The smallest scroll that shows the tab, like the native test's performScrollTo.
       await tab.evaluate((el) => el.scrollIntoView({ block: 'nearest', inline: 'nearest' }));
       await tab.click(); await rest();
-      if (value === 'visits') { await shot('reports-visits-none'); await page.getByLabel('شاحنة الزيارات').selectOption({ label: 'شاحنة ٢' }); }
+      if (value === 'visits') { await shot('reports-visits-none'); await page.getByLabel('شاحنة الزيارات').selectOption({ label: 'شاحنة ٨' }); }
       await shot('reports-' + value);
       if (value === 'inactive') { await page.getByLabel('مدة عدم الشراء').selectOption('7'); await shot('reports-inactive-7'); }
     }

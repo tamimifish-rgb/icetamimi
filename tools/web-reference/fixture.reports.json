@@ -14,8 +14,8 @@
   "trucks": [
    {
     "id": "rep-t2",
-    "code": "T2",
-    "name": "شاحنة ٢",
+    "code": "T8",
+    "name": "شاحنة ٨",
     "plate": "5678",
     "active": true
    }
@@ -97,8 +97,8 @@
     "loading_approved_at": "2026-11-12T03:45:00+00:00",
     "created_at": "2026-11-12T03:30:00+00:00",
     "trucks": {
-     "name": "شاحنة ٢",
-     "code": "T2"
+     "name": "شاحنة ٨",
+     "code": "T8"
     }
    },
    {
@@ -110,8 +110,8 @@
     "loading_approved_at": "2026-11-10T03:45:00+00:00",
     "created_at": "2026-11-10T03:30:00+00:00",
     "trucks": {
-     "name": "شاحنة ٢",
-     "code": "T2"
+     "name": "شاحنة ٨",
+     "code": "T8"
     }
    }
   ],
@@ -152,7 +152,7 @@
   "sales": [
    {
     "id": "rep-s1",
-    "invoice_no": "T2-20261110-r01",
+    "invoice_no": "T8-20261110-r01",
     "trip_id": "rep-trip-a",
     "truck_id": "rep-t2",
     "customer_id": "rep-c1",
@@ -169,7 +169,7 @@
    },
    {
     "id": "rep-s2",
-    "invoice_no": "T2-20261110-r02",
+    "invoice_no": "T8-20261110-r02",
     "trip_id": "rep-trip-a",
     "truck_id": "rep-t2",
     "customer_id": "rep-c2",
@@ -186,7 +186,7 @@
    },
    {
     "id": "rep-s3",
-    "invoice_no": "T2-20261110-r03",
+    "invoice_no": "T8-20261110-r03",
     "trip_id": "rep-trip-a",
     "truck_id": "rep-t2",
     "customer_id": "rep-c1",
@@ -203,7 +203,7 @@
    },
    {
     "id": "rep-s4",
-    "invoice_no": "T2-20261112-r04",
+    "invoice_no": "T8-20261112-r04",
     "trip_id": "rep-trip-b",
     "truck_id": "rep-t2",
     "customer_id": "rep-c2",
@@ -220,7 +220,7 @@
    },
    {
     "id": "rep-s5",
-    "invoice_no": "T2-20261112-r05",
+    "invoice_no": "T8-20261112-r05",
     "trip_id": "rep-trip-b",
     "truck_id": "rep-t2",
     "customer_id": "rep-c1",

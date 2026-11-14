@@ -563,14 +563,14 @@ private fun status(trip: DataRow) = if (trip.str("status") == "closed") "مغل�
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-fun RouteMapScreen() {
+fun RouteMapScreen(initialTrip: String? = null) {
     val repo = LocalRepo.current
     val me by repo.me.collectAsState()
     val today = remember { adenDay() }
     var from by remember { mutableStateOf(shiftDay(today, -6)) }
     var to by remember { mutableStateOf(today) }
     var truck by remember { mutableStateOf("") }
-    var selected by remember { mutableStateOf<String?>(null) }
+    var selected by remember { mutableStateOf(initialTrip) }
     val userId = me?.id
     val query = rememberQuery(listOf(userId, from, to, truck, selected), userId != null && DAY.matches(from) && DAY.matches(to) && from <= to) { loadRoutes(repo.api, from, to, truck, selected) }
     val data = query.result?.getOrNull()
