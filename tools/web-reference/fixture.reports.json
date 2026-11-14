@@ -1,0 +1,496 @@
+{
+ "tables": {
+  "profiles": [
+   {
+    "id": "rep-d1",
+    "full_name": "خالد الموزع",
+    "username": "khaled",
+    "truck_id": "rep-t2",
+    "active": true,
+    "pin_enabled": true,
+    "created_at": "2026-10-01T05:00:00+00:00"
+   }
+  ],
+  "trucks": [
+   {
+    "id": "rep-t2",
+    "code": "T2",
+    "name": "شاحنة ٢",
+    "plate": "5678",
+    "active": true
+   }
+  ],
+  "customers": [
+   {
+    "id": "rep-c1",
+    "name": "سوبرماركت الهدى",
+    "phone": "773456789",
+    "region_id": "r1",
+    "credit_limit": 10000,
+    "active": true,
+    "truck_id": "rep-t2",
+    "location_notes": null,
+    "lat": null,
+    "lng": null,
+    "created_by": "rep-d1"
+   },
+   {
+    "id": "rep-c2",
+    "name": "كافتيريا الميناء",
+    "phone": "734561278",
+    "region_id": "r2",
+    "credit_limit": 10000,
+    "active": true,
+    "truck_id": "rep-t2",
+    "location_notes": null,
+    "lat": null,
+    "lng": null,
+    "created_by": "rep-d1"
+   },
+   {
+    "id": "rep-c3",
+    "name": "مخبز الريان",
+    "phone": null,
+    "region_id": "r1",
+    "credit_limit": 10000,
+    "active": true,
+    "truck_id": "rep-t2",
+    "location_notes": null,
+    "lat": null,
+    "lng": null,
+    "created_by": "rep-d1"
+   }
+  ],
+  "customer_balances": [
+   {
+    "customer_id": "rep-c1",
+    "balance": 5000,
+    "month_sales": 24000,
+    "total_sales": 61000
+   },
+   {
+    "customer_id": "rep-c2",
+    "balance": 3000,
+    "month_sales": 13500,
+    "total_sales": 27500
+   }
+  ],
+  "freezers": [
+   {
+    "id": "rep-f3",
+    "serial": "FZ-003",
+    "status": "placed",
+    "customer_id": "rep-c1",
+    "condition": null,
+    "freezer_models": {
+     "name": "٥٠٠ لتر"
+    }
+   }
+  ],
+  "trips": [
+   {
+    "id": "rep-trip-b",
+    "truck_id": "rep-t2",
+    "distributor_id": "rep-d1",
+    "status": "closed",
+    "trip_date": "2026-11-12",
+    "loading_approved_at": "2026-11-12T03:45:00+00:00",
+    "created_at": "2026-11-12T03:30:00+00:00",
+    "trucks": {
+     "name": "شاحنة ٢",
+     "code": "T2"
+    }
+   },
+   {
+    "id": "rep-trip-a",
+    "truck_id": "rep-t2",
+    "distributor_id": "rep-d1",
+    "status": "closed",
+    "trip_date": "2026-11-10",
+    "loading_approved_at": "2026-11-10T03:45:00+00:00",
+    "created_at": "2026-11-10T03:30:00+00:00",
+    "trucks": {
+     "name": "شاحنة ٢",
+     "code": "T2"
+    }
+   }
+  ],
+  "trip_stock": [
+   {
+    "trip_id": "rep-trip-a",
+    "variant_id": "v1",
+    "loaded": 30,
+    "sold": 27,
+    "returned": 2,
+    "damaged": 0
+   },
+   {
+    "trip_id": "rep-trip-a",
+    "variant_id": "v2",
+    "loaded": 8,
+    "sold": 6,
+    "returned": 0,
+    "damaged": 1
+   },
+   {
+    "trip_id": "rep-trip-b",
+    "variant_id": "v1",
+    "loaded": 21,
+    "sold": 21,
+    "returned": 0,
+    "damaged": 0
+   },
+   {
+    "trip_id": "rep-trip-b",
+    "variant_id": "v2",
+    "loaded": 5,
+    "sold": 3,
+    "returned": 2,
+    "damaged": 0
+   }
+  ],
+  "sales": [
+   {
+    "id": "rep-s1",
+    "invoice_no": "T2-20261110-r01",
+    "trip_id": "rep-trip-a",
+    "truck_id": "rep-t2",
+    "customer_id": "rep-c1",
+    "total": 12000,
+    "cash_paid": 12000,
+    "credit_amount": 0,
+    "lat": 14.5352,
+    "lng": 49.1251,
+    "created_by": "rep-d1",
+    "created_at": "2026-11-10T05:10:00+00:00",
+    "customers": {
+     "name": "سوبرماركت الهدى"
+    }
+   },
+   {
+    "id": "rep-s2",
+    "invoice_no": "T2-20261110-r02",
+    "trip_id": "rep-trip-a",
+    "truck_id": "rep-t2",
+    "customer_id": "rep-c2",
+    "total": 7500,
+    "cash_paid": 2500,
+    "credit_amount": 5000,
+    "lat": 14.5431,
+    "lng": 49.1342,
+    "created_by": "rep-d1",
+    "created_at": "2026-11-10T06:40:00+00:00",
+    "customers": {
+     "name": "كافتيريا الميناء"
+    }
+   },
+   {
+    "id": "rep-s3",
+    "invoice_no": "T2-20261110-r03",
+    "trip_id": "rep-trip-a",
+    "truck_id": "rep-t2",
+    "customer_id": "rep-c1",
+    "total": 3000,
+    "cash_paid": 3000,
+    "credit_amount": 0,
+    "lat": null,
+    "lng": null,
+    "created_by": "rep-d1",
+    "created_at": "2026-11-10T08:05:00+00:00",
+    "customers": {
+     "name": "سوبرماركت الهدى"
+    }
+   },
+   {
+    "id": "rep-s4",
+    "invoice_no": "T2-20261112-r04",
+    "trip_id": "rep-trip-b",
+    "truck_id": "rep-t2",
+    "customer_id": "rep-c2",
+    "total": 6000,
+    "cash_paid": 6000,
+    "credit_amount": 0,
+    "lat": 14.544,
+    "lng": 49.1355,
+    "created_by": "rep-d1",
+    "created_at": "2026-11-12T05:30:00+00:00",
+    "customers": {
+     "name": "كافتيريا الميناء"
+    }
+   },
+   {
+    "id": "rep-s5",
+    "invoice_no": "T2-20261112-r05",
+    "trip_id": "rep-trip-b",
+    "truck_id": "rep-t2",
+    "customer_id": "rep-c1",
+    "total": 9000,
+    "cash_paid": 4000,
+    "credit_amount": 5000,
+    "lat": 14.5349,
+    "lng": 49.1247,
+    "created_by": "rep-d1",
+    "created_at": "2026-11-12T07:15:00+00:00",
+    "customers": {
+     "name": "سوبرماركت الهدى"
+    }
+   }
+  ],
+  "sale_items": [
+   {
+    "id": "rep-i0",
+    "sale_id": "s0",
+    "variant_id": "v1",
+    "qty": 10,
+    "unit_price": 450,
+    "line_total": 4500,
+    "sales": {
+     "created_at": "2026-11-14T06:00:00+00:00"
+    }
+   },
+   {
+    "id": "rep-i1",
+    "sale_id": "rep-s1",
+    "variant_id": "v1",
+    "qty": 15,
+    "unit_price": 500,
+    "line_total": 7500,
+    "sales": {
+     "created_at": "2026-11-10T05:10:00+00:00"
+    }
+   },
+   {
+    "id": "rep-i2",
+    "sale_id": "rep-s1",
+    "variant_id": "v2",
+    "qty": 3,
+    "unit_price": 1500,
+    "line_total": 4500,
+    "sales": {
+     "created_at": "2026-11-10T05:10:00+00:00"
+    }
+   },
+   {
+    "id": "rep-i3",
+    "sale_id": "rep-s2",
+    "variant_id": "v1",
+    "qty": 6,
+    "unit_price": 500,
+    "line_total": 3000,
+    "sales": {
+     "created_at": "2026-11-10T06:40:00+00:00"
+    }
+   },
+   {
+    "id": "rep-i4",
+    "sale_id": "rep-s2",
+    "variant_id": "v2",
+    "qty": 3,
+    "unit_price": 1500,
+    "line_total": 4500,
+    "sales": {
+     "created_at": "2026-11-10T06:40:00+00:00"
+    }
+   },
+   {
+    "id": "rep-i5",
+    "sale_id": "rep-s3",
+    "variant_id": "v1",
+    "qty": 6,
+    "unit_price": 500,
+    "line_total": 3000,
+    "sales": {
+     "created_at": "2026-11-10T08:05:00+00:00"
+    }
+   },
+   {
+    "id": "rep-i6",
+    "sale_id": "rep-s4",
+    "variant_id": "v1",
+    "qty": 12,
+    "unit_price": 500,
+    "line_total": 6000,
+    "sales": {
+     "created_at": "2026-11-12T05:30:00+00:00"
+    }
+   },
+   {
+    "id": "rep-i7",
+    "sale_id": "rep-s5",
+    "variant_id": "v1",
+    "qty": 9,
+    "unit_price": 500,
+    "line_total": 4500,
+    "sales": {
+     "created_at": "2026-11-12T07:15:00+00:00"
+    }
+   },
+   {
+    "id": "rep-i8",
+    "sale_id": "rep-s5",
+    "variant_id": "v2",
+    "qty": 3,
+    "unit_price": 1500,
+    "line_total": 4500,
+    "sales": {
+     "created_at": "2026-11-12T07:15:00+00:00"
+    }
+   }
+  ],
+  "payments": [
+   {
+    "id": "rep-p1",
+    "trip_id": "rep-trip-b",
+    "truck_id": "rep-t2",
+    "customer_id": "rep-c2",
+    "amount": 2000,
+    "created_by": "rep-d1",
+    "created_at": "2026-11-12T05:35:00+00:00"
+   }
+  ],
+  "expenses": [
+   {
+    "id": "rep-e1",
+    "trip_id": "rep-trip-a",
+    "truck_id": "rep-t2",
+    "category": "وقود",
+    "amount": 6000,
+    "notes": "تعبئة كاملة",
+    "created_by": "rep-d1",
+    "created_at": "2026-11-10T04:00:00+00:00"
+   },
+   {
+    "id": "rep-e2",
+    "trip_id": "rep-trip-a",
+    "truck_id": "rep-t2",
+    "category": "وجبات",
+    "amount": 1500,
+    "notes": null,
+    "created_by": "rep-d1",
+    "created_at": "2026-11-10T09:30:00+00:00"
+   },
+   {
+    "id": "rep-e3",
+    "trip_id": "rep-trip-b",
+    "truck_id": "rep-t2",
+    "category": "وقود",
+    "amount": 5500,
+    "notes": null,
+    "created_by": "rep-d1",
+    "created_at": "2026-11-12T04:10:00+00:00"
+   }
+  ],
+  "maintenance_jobs": [
+   {
+    "id": "rep-m1",
+    "trip_id": "rep-trip-b",
+    "truck_id": "rep-t2",
+    "freezer_id": null,
+    "title": "تغيير زيت",
+    "job_date": "2026-11-12",
+    "cost": 8000,
+    "notes": "زيت وفلتر",
+    "created_by": "rep-d1",
+    "created_at": "2026-11-12T10:00:00+00:00"
+   }
+  ],
+  "gps_points": [
+   {
+    "id": "rep-g01",
+    "trip_id": "rep-trip-a",
+    "lat": 14.53,
+    "lng": 49.12,
+    "recorded_at": "2026-11-10T04:05:00+00:00",
+    "created_by": "rep-d1"
+   },
+   {
+    "id": "rep-g02",
+    "trip_id": "rep-trip-a",
+    "lat": 14.5312,
+    "lng": 49.1214,
+    "recorded_at": "2026-11-10T04:08:00+00:00",
+    "created_by": "rep-d1"
+   },
+   {
+    "id": "rep-g03",
+    "trip_id": "rep-trip-a",
+    "lat": 14.5327,
+    "lng": 49.1229,
+    "recorded_at": "2026-11-10T04:12:00+00:00",
+    "created_by": "rep-d1"
+   },
+   {
+    "id": "rep-g04",
+    "trip_id": "rep-trip-a",
+    "lat": 14.5341,
+    "lng": 49.1242,
+    "recorded_at": "2026-11-10T04:16:00+00:00",
+    "created_by": "rep-d1"
+   },
+   {
+    "id": "rep-g05",
+    "trip_id": "rep-trip-a",
+    "lat": 14.5352,
+    "lng": 49.1251,
+    "recorded_at": "2026-11-10T04:20:00+00:00",
+    "created_by": "rep-d1"
+   },
+   {
+    "id": "rep-g06",
+    "trip_id": "rep-trip-a",
+    "lat": 14.5378,
+    "lng": 49.128,
+    "recorded_at": "2026-11-10T04:32:00+00:00",
+    "created_by": "rep-d1"
+   },
+   {
+    "id": "rep-g07",
+    "trip_id": "rep-trip-a",
+    "lat": 14.5396,
+    "lng": 49.1301,
+    "recorded_at": "2026-11-10T04:36:00+00:00",
+    "created_by": "rep-d1"
+   },
+   {
+    "id": "rep-g08",
+    "trip_id": "rep-trip-a",
+    "lat": 14.5413,
+    "lng": 49.1322,
+    "recorded_at": "2026-11-10T04:40:00+00:00",
+    "created_by": "rep-d1"
+   },
+   {
+    "id": "rep-g09",
+    "trip_id": "rep-trip-a",
+    "lat": 14.5431,
+    "lng": 49.1342,
+    "recorded_at": "2026-11-10T04:44:00+00:00",
+    "created_by": "rep-d1"
+   },
+   {
+    "id": "rep-g10",
+    "trip_id": "rep-trip-a",
+    "lat": 14.5446,
+    "lng": 49.1368,
+    "recorded_at": "2026-11-10T04:48:00+00:00",
+    "created_by": "rep-d1"
+   },
+   {
+    "id": "rep-g11",
+    "trip_id": "rep-trip-a",
+    "lat": 14.5461,
+    "lng": 49.1391,
+    "recorded_at": "2026-11-10T04:52:00+00:00",
+    "created_by": "rep-d1"
+   },
+   {
+    "id": "rep-g12",
+    "trip_id": "rep-trip-a",
+    "lat": 14.548,
+    "lng": 49.142,
+    "recorded_at": "2026-11-10T04:56:00+00:00",
+    "created_by": "rep-d1"
+   }
+  ]
+ }
+}
