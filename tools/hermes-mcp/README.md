@@ -39,7 +39,7 @@ Dates are business days in Asia/Aden (UTC+3), the same as the app. Each date can
 ## Setup
 
 1. **Create a staff account for the agent.** In the app go to Administrator → Employees.
-   Add an employee such as "AI Agent" with username `ai_agent` and the *supervisor* role,
+   Add an employee named **سليم** with username `saleem` and the *supervisor* role,
    then set a PIN. Using a separate account keeps the agent's sign-ins visible and lets you
    revoke its access without affecting anyone else.
 
@@ -61,7 +61,7 @@ Dates are business days in Asia/Aden (UTC+3), the same as the app. Each date can
 ### Running it as a URL instead (optional)
 
 ```sh
-PUREICE_USERNAME=ai_agent PUREICE_PIN=123456 .venv/bin/python pureice_mcp.py --http
+PUREICE_USERNAME=saleem PUREICE_PIN=123456 .venv/bin/python pureice_mcp.py --http
 # serves http://127.0.0.1:8765/mcp
 ```
 

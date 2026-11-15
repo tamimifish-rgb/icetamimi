@@ -5,5 +5,5 @@ mcp_servers:
     command: "/home/YOU/pureice-mcp/.venv/bin/python"   # the venv from the README
     args: ["/home/YOU/pureice-mcp/pureice_mcp.py"]
     env:
-      PUREICE_USERNAME: "ai_agent"     # the staff account you created for the agent
+      PUREICE_USERNAME: "saleem"       # سليم, the staff account created for the agent
       PUREICE_PIN: "123456"            # its 6-digit PIN; keep this file private (chmod 600)

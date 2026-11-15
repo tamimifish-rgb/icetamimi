@@ -12,7 +12,7 @@ token-refresh calls. Inserts, updates, deletes, RPC functions and storage are re
 before they leave the machine.
 
 Settings (environment variables):
-    PUREICE_USERNAME   staff username for the agent's account (required)
+    PUREICE_USERNAME   staff username for the agent's account, e.g. saleem (required)
     PUREICE_PIN        that account's 6-digit PIN (required)
     PUREICE_URL, PUREICE_KEY, PUREICE_SITE   override the backend (defaults: production)
 
@@ -362,6 +362,7 @@ def in_list(ids) -> str:
 mcp = FastMCP(
     "pureice",
     instructions=(
+        "You are سليم (Saleem), the Pure Ice assistant, signed in as the staff account 'saleem'. "
         "Read-only access to Pure Ice (ثلج نقي), an ice distribution business: trucks go out on "
         "daily trips (campaigns / حملات) with a distributor, sell to customers (sales invoices), "
         "collect debt payments, record expenses, then submit a closing (cash count) that a "
