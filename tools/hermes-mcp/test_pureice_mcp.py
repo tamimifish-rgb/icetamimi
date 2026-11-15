@@ -113,6 +113,53 @@ def test_query_table_rejects_unlisted_tables():
         pass
 
 
+def test_guard_allows_only_reads_and_sign_in():
+    sb, site = p.SUPABASE_URL, p.SITE
+    allowed = [
+        ("GET", f"{sb}/rest/v1/sales?select=*"),
+        ("HEAD", f"{sb}/rest/v1/customers?select=id"),
+        ("GET", f"{sb}/auth/v1/user"),
+        ("POST", f"{sb}/auth/v1/token?grant_type=refresh_token"),
+        ("POST", f"{site}/_serverFn/{p.STAFF_LOGIN_ID}"),
+    ]
+    blocked = [
+        ("POST", f"{sb}/rest/v1/sales"),                      # insert
+        ("PATCH", f"{sb}/rest/v1/customers?id=eq.1"),         # update
+        ("DELETE", f"{sb}/rest/v1/payments?id=eq.1"),         # delete
+        ("PUT", f"{sb}/rest/v1/trips"),
+        ("POST", f"{sb}/rest/v1/rpc/save_invoice"),           # server functions
+        ("GET", f"{sb}/rest/v1/rpc/review_closing?p_id=1"),
+        ("GET", f"{sb}/rest/v1/staff_login_attempts"),        # not allowlisted
+        ("POST", f"{sb}/storage/v1/object/pureice-receipts/x"),
+        ("POST", f"{sb}/auth/v1/logout"),
+        ("PUT", f"{sb}/auth/v1/user"),                        # change password/email
+        ("POST", f"{sb}/auth/v1/token?grant_type=password"),
+        ("POST", f"{site}/_serverFn/{p._sha256('src/lib/staff.functions.ts--setStaffPin_createServerFn_handler')}"),
+        ("GET", "https://example.com/rest/v1/sales"),
+    ]
+    for m, u in allowed:
+        p.check_read_only(m, u)
+    for m, u in blocked:
+        try:
+            p.check_read_only(m, u)
+            raise AssertionError(f"guard let through {m} {u}")
+        except p.ReadOnlyViolation:
+            pass
+
+
+def test_guard_runs_on_every_request():
+    sent = []
+    http = httpx.Client(transport=httpx.MockTransport(lambda r: sent.append(r) or httpx.Response(201)))
+    c = p.Client("agent", "123456", http=http)
+    try:
+        c.http.post(f"{p.SUPABASE_URL}/rest/v1/sales", json={"total": 1})
+        raise AssertionError("write reached the network")
+    except p.ReadOnlyViolation:
+        pass
+    assert sent == [], "nothing may be sent"
+    assert not hasattr(c, "rpc")
+
+
 def test_tools_are_registered():
     names = {t.name for t in asyncio.run(p.mcp.list_tools())}
     assert {"whoami", "sales_summary", "list_sales", "get_invoice", "find_customers", "customer_debts",

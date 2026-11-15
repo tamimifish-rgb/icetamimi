@@ -6,7 +6,10 @@ hosted `staffLogin` function, exactly like the phone. The database's own row-lev
 security then decides what that account may see, so give the agent its own account
 with the narrowest role that answers your questions (supervisor is usually enough).
 
-Every tool is read-only. Nothing here can create, edit or delete a record.
+Read-only, enforced twice: no tool writes, and every outgoing request passes a guard
+(`check_read_only`) that allows only GET on allowlisted tables plus the sign-in and
+token-refresh calls. Inserts, updates, deletes, RPC functions and storage are refused
+before they leave the machine.
 
 Settings (environment variables):
     PUREICE_USERNAME   staff username for the agent's account (required)
@@ -55,10 +58,41 @@ READABLE_TABLES = {
     "freezer_events", "profiles", "user_roles", "pureice_deposits", "pureice_invoice_changes",
     "pureice_company_settings", "gps_points",
 }
+# Also read by the name lookups (already in READABLE_TABLES today; kept explicit).
+LOOKUP_TABLES = {"trucks", "profiles", "product_variants", "regions", "customers"}
 
 
 class PureIceError(Exception):
     pass
+
+
+class ReadOnlyViolation(PureIceError):
+    pass
+
+
+def check_read_only(method: str, url: str) -> None:
+    """The only requests this server may ever send. Data is read with GET on an allowlisted
+    table; the two POSTs are sign-in and token refresh. Anything else (insert, update,
+    delete, RPC functions, storage, other Auth calls) is refused before it leaves."""
+    u = httpx.URL(url)
+    origin = f"{u.scheme}://{u.host}"
+    path, method = u.path, method.upper()
+    if origin == SITE and method == "POST" and path == f"/_serverFn/{STAFF_LOGIN_ID}":
+        return
+    if origin == SUPABASE_URL:
+        if method == "GET" and path == "/auth/v1/user":
+            return
+        if method == "POST" and path == "/auth/v1/token" and u.params.get("grant_type") == "refresh_token" and len(u.params) == 1:
+            return
+        if method in ("GET", "HEAD") and path.startswith("/rest/v1/"):
+            table = path[len("/rest/v1/"):]
+            if table in READABLE_TABLES or table in LOOKUP_TABLES:
+                return
+    raise ReadOnlyViolation(f"Blocked by the read-only guard: {method} {origin}{path}")
+
+
+def enforce_read_only(request: httpx.Request) -> None:
+    check_read_only(request.method, str(request.url))
 
 
 # ---- staffLogin wire protocol (mirrors data/StaffLogin.kt; see StaffLoginTest) --------
@@ -186,6 +220,8 @@ class Client:
         self.username = normalize_username(username)
         self.pin = pin.strip()
         self.http = http or httpx.Client(timeout=40)
+        # Every request this client sends passes the read-only guard first.
+        self.http.event_hooks.setdefault("request", []).append(enforce_read_only)
         self._lock = threading.Lock()
         self._access: str | None = None
         self._refresh: str | None = None
@@ -260,9 +296,6 @@ class Client:
             if len(page) < 500:
                 break
         return rows
-
-    def rpc(self, fn: str, args: dict) -> Any:
-        return self._raw("POST", f"/rest/v1/rpc/{fn}", bearer=self.token(), json_body=args)
 
 
 # ---- helpers --------------------------------------------------------------------------

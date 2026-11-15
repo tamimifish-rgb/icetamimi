@@ -12,9 +12,12 @@ It uses the same API as the Android app:
 - **Permissions.** The database's row-level security decides what the agent can see, based
   on the role of the account you give it. A *supervisor* account can read everything
   managers need. A *distributor* account sees only that distributor's own data.
-- **Read-only.** None of the tools can create, change or delete records. The `query_table`
-  tool can read only the business tables on its allowlist; it cannot reach auth or login
-  tables.
+- **Read-only, enforced in two places.** No tool writes anything. On top of that, every
+  request the server sends passes a guard (`check_read_only`) that lets through only:
+  `GET`/`HEAD` on the allowlisted business tables, the sign-in call and the token refresh.
+  Inserts, updates, deletes, server functions (`/rpc/...`, such as `save_invoice` or
+  `review_closing`), file storage, PIN or password changes, and any other host are refused
+  before anything leaves the machine. The tests check each of these.
 
 ## Tools
 
@@ -78,10 +81,12 @@ The sign-in tests use the same byte-for-byte vectors as the app's `StaffLoginTes
 the web project renames `staffLogin` or moves it out of `src/lib/staff.functions.ts`, update
 both places.
 
-## Adding write actions later
+## Keeping the account itself read-only
 
-Write actions (recording a payment, approving a closing, and so on) are left out on purpose,
-because an agent misreading a request would create real financial records. If you want
-them, add them one at a time. Each should call the same server function the app uses
-(`save_invoice`, `review_closing`, ...) with a client-generated UUID so retries stay
-idempotent, and Hermes should be set to ask for your confirmation before it calls them.
+The guard makes *this server* read-only. The PIN in the Hermes config could still be used
+in the app by anyone who has it, with the full powers of its role. So:
+
+- keep `~/.hermes/config.yaml` private (`chmod 600`) and use a PIN no person uses;
+- don't give the agent's account a truck, so it can never be the distributor on a trip;
+- if the PIN may have leaked, change it or deactivate the account in Administrator →
+  Employees. The agent stops working at once, and nothing else is affected.
