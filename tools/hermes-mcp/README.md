@@ -58,6 +58,13 @@ Dates are business days in Asia/Aden (UTC+3), the same as the app. Each date can
 
 4. **Test it.** Ask Hermes: *"Use pureice whoami, then give me today's sales summary."*
 
+### Hermes profiles (for example `tamimi-ice`)
+
+Each Hermes profile has its own config file at `~/.hermes/profiles/<profile>/config.yaml`.
+Put the `mcp_servers` block in that profile's file (here `~/.hermes/profiles/tamimi-ice/config.yaml`),
+not in `~/.hermes/config.yaml`. Only that profile will then see the Pure Ice tools. Protect the
+file with `chmod 600`, because it holds the PIN.
+
 ### Running it as a URL instead (optional)
 
 ```sh
