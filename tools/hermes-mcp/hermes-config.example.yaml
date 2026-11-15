@@ -1,0 +1,9 @@
+# Add this block to ~/.hermes/config.yaml (merge it into an existing mcp_servers: key).
+# Then run /reload-mcp in a Hermes chat, or restart Hermes.
+mcp_servers:
+  pureice:
+    command: "/home/YOU/pureice-mcp/.venv/bin/python"   # the venv from the README
+    args: ["/home/YOU/pureice-mcp/pureice_mcp.py"]
+    env:
+      PUREICE_USERNAME: "ai_agent"     # the staff account you created for the agent
+      PUREICE_PIN: "123456"            # its 6-digit PIN; keep this file private (chmod 600)

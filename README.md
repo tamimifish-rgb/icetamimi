@@ -72,6 +72,7 @@ app/src/main/java/com/tamimi/naqiice/
   ui/        Compose screens
 app/src/test/  JVM unit tests, and screen tests that render every screen (Robolectric)
 tools/web-reference/  web-vs-native comparison harness and the parity method
+tools/hermes-mcp/     read-only MCP server so AI agents (Hermes Agent, Claude) can query the data
 ```
 
 Backend settings (project URL, publishable key, receipts bucket, site origin) are the
