@@ -17,6 +17,9 @@ Rules these files follow:
 
 ## Applying
 
+Applied to the live project on 2026-11-16 as migration `pureice_boxes_and_customer_location`
+(with مجروش أبو ١٠ registered as the boxed variant). The steps below are for another database.
+
 Run the file once as a single script (it is one transaction). Before: check that no
 `pureice_box*` / `pureice_customer_locations` object exists. After:
 
