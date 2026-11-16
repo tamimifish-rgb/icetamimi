@@ -65,6 +65,9 @@ abstract class ScreenHarness {
     protected lateinit var nav: Nav
 
     @Before fun signedInDistributor() {
+        Fixture.boxes = false
+        Fixture.writes.clear()
+        com.tamimi.naqiice.ui.scannerAsksForCamera = false
         Shadows.shadowOf(app).grantPermissions(Manifest.permission.ACCESS_FINE_LOCATION)
         // A fresh position, so the location gate is open as it is for a working distributor.
         val manager = app.getSystemService(android.content.Context.LOCATION_SERVICE) as android.location.LocationManager

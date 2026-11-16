@@ -54,9 +54,12 @@ fun LocalStore.enqueue(ownerId: String, kind: String, payload: JsonObject, id: S
     }
 }
 
-fun LocalStore.setClosingAside(ownerId: String, id: String) = transaction {
+/** A closing under review, or a box/location record the server keeps refusing, can be parked. */
+fun OutboxOp.canSetAside(): Boolean = (kind == "closing" && state == "review") || (kind in SIDE_KINDS && state == "blocked")
+
+fun LocalStore.setAside(ownerId: String, id: String) = transaction {
     val op = getOp(id)
-    if (op == null || op.ownerId != ownerId || op.kind != "closing" || op.state != "review") throw IllegalStateException("الطلب غير متاح للتنحية")
+    if (op == null || op.ownerId != ownerId || !op.canSetAside()) throw IllegalStateException("الطلب غير متاح للتنحية")
     putOp(op.copy(state = "set_aside"))
 }
 

@@ -21,7 +21,9 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Icon
 import androidx.compose.ui.draw.clip
@@ -49,6 +51,8 @@ import com.tamimi.naqiice.R
 import com.tamimi.naqiice.core.Row as DataRow
 import com.tamimi.naqiice.core.SaleLine
 import com.tamimi.naqiice.core.bool
+import com.tamimi.naqiice.core.boxMoveRequest
+import com.tamimi.naqiice.core.boxNumber
 import com.tamimi.naqiice.core.depositTotals
 import com.tamimi.naqiice.core.exceedsCreditLimit
 import com.tamimi.naqiice.core.formatDate
@@ -62,6 +66,7 @@ import com.tamimi.naqiice.core.num
 import com.tamimi.naqiice.core.numOrNull
 import com.tamimi.naqiice.core.numericInput
 import com.tamimi.naqiice.core.obj
+import com.tamimi.naqiice.core.offerCustomerLocation
 import com.tamimi.naqiice.core.parseNumber
 import com.tamimi.naqiice.core.priceFor
 import com.tamimi.naqiice.core.rows
@@ -101,9 +106,40 @@ fun SaleScreen(initialCustomer: String?) {
     var slip by remember { mutableStateOf<String?>(null) }
     var cash by remember { mutableStateOf("") }
     val qty = remember { mutableStateMapOf<String, Double>() }
+    // Returnable boxes: the ones staying with the customer and the empties taken back.
+    var kept by remember { mutableStateOf(listOf<ScannedBox>()) }
+    var collected by remember { mutableStateOf(listOf<ScannedBox>()) }
+    var scanning by remember { mutableStateOf<String?>(null) }
+    var saved by remember { mutableStateOf<SavedSale?>(null) }
+    val locationOperation = rememberOperation()
 
     val user = me
     val trip = snap.trip
+    // The invoice is already saved here; only the customer's location is being confirmed.
+    saved?.let { s ->
+        Empty("تم حفظ الفاتورة")
+        AlertDialog(
+            onDismissRequest = {},
+            title = { Text("موقع العميل", style = T.lg.bold) },
+            text = { Text("هل أنت الآن عند موقع العميل «${s.name}» بالضبط؟\nسيُحفظ موقعك الحالي (الدقة ± ${formatNum(Math.ceil(s.accuracy.toDouble()))} م) موقعاً لهذا العميل.") },
+            confirmButton = {
+                TextButton({
+                    locationOperation.run { opId ->
+                        runCatching {
+                            repo.enqueue("customer_location", buildJsonObject {
+                                put("id", opId); put("customer_id", s.customerId); put("sale_id", s.saleId)
+                                put("lat", JsonPrimitive(s.lat)); put("lng", JsonPrimitive(s.lng)); put("accuracy", JsonPrimitive(s.accuracy))
+                                put("created_by", s.userId); put("created_at", isoNow())
+                            })
+                        }.onSuccess { toast("تم حفظ موقع العميل") }.onFailure { toast("تعذّر حفظ الموقع") }
+                        nav.replace(Screen.Invoice(s.saleId))
+                    }
+                }, enabled = !locationOperation.busy) { Text("نعم، احفظ الموقع") }
+            },
+            dismissButton = { TextButton({ nav.replace(Screen.Invoice(s.saleId)) }, enabled = !locationOperation.busy) { Text("لا، لست عنده") } },
+        )
+        return
+    }
     if (snap.ref == null) { Empty("جارٍ تحميل البيانات…"); return }
     if (trip == null || user == null || !snap.ownOpenTrip(user.id) || trip.str("loading_approved_at") == null) {
         Empty("تحتاج حملة معينة لك وتحميلاً معتمداً قبل البيع."); return
@@ -132,10 +168,21 @@ fun SaleScreen(initialCustomer: String?) {
     val overLimit = customer != null && exceedsCreditLimit(limit, debt, credit)
     val truck = snap.truck(trip.str("truck_id") ?: user.truckId)
     fun plain(n: Double) = if (n == Math.rint(n)) n.toLong().toString() else n.toString()
+    val boxQty = lines.filter { snap.isBoxVariant(it.variantId) }.sumOf { it.qty }.toInt()
+    val withCustomer = snap.boxesWith(chosen)
+    val showBoxes = snap.boxSupport && (boxQty > 0 || withCustomer.isNotEmpty() || kept.isNotEmpty() || collected.isNotEmpty())
+
+    scanning?.let { action ->
+        val deliver = action == "deliver"
+        BoxScanDialog(
+            if (deliver) "صناديق تبقى عند العميل" else "صناديق مستلمة من العميل", action, trip.str("truck_id"), chosen,
+            initial = if (deliver) kept else collected, limit = if (deliver) boxQty else null, allowEmpty = true, onClose = { scanning = null },
+        ) { list -> if (deliver) kept = list else collected = list; scanning = null }
+    }
 
     Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
         location.prompt()
-        Row(Modifier.tap { customerId = null }, verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+        Row(Modifier.tap { customerId = null; kept = emptyList(); collected = emptyList() }, verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
             Icon(Lucide.ArrowRight, null, Modifier.size(16.dp), tint = Ice.primary)
             Text("تغيير العميل", style = T.sm.color(Ice.primary))
         }
@@ -166,6 +213,21 @@ fun SaleScreen(initialCustomer: String?) {
                     )
                     RoundButton(Lucide.Plus, "زيادة", Ice.primary, Ice.onPrimary) { qty[id] = n + 1 }
                 }
+            }
+        }
+
+        if (showBoxes) IceCard {
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Icon(Lucide.Package, null, Modifier.size(20.dp), tint = Ice.primary)
+                    Text("الصناديق", style = T.base.bold)
+                }
+                Text("امسح فقط الصناديق التي ستبقى عند العميل. الصندوق الذي يُفرَّغ ويعود معك لا يُمسح.", style = T.xs.muted)
+                if (boxQty > 0 || kept.isNotEmpty()) BoxLine("تبقى عند العميل", "${kept.size} من $boxQty", kept, kept.size > boxQty) { scanning = "deliver" }
+                BoxLine("مستلمة من العميل (فارغة)", "${collected.size}", collected, false) { scanning = "collect" }
+                if (withCustomer.isNotEmpty()) Text(
+                    "صناديق مسجلة عند العميل الآن: " + withCustomer.mapNotNull { boxNumber(it.str("serial")) }.sorted().joinToString("، "), style = T.xs.muted,
+                )
             }
         }
 
@@ -211,8 +273,10 @@ fun SaleScreen(initialCustomer: String?) {
                         if (lines.any { !it.qty.isFinite() || it.qty <= 0 || !it.unitPrice.isFinite() || it.unitPrice <= 0 || it.qty > snap.stockOf(it.variantId) }) {
                             throw Notice("الكمية أو السعر غير صحيح أو المخزون غير كاف")
                         }
+                        if (kept.size > boxQty) throw Notice("الصناديق المتروكة عند العميل أكثر من الكمية المباعة")
+                        if (kept.any { k -> collected.any { it.serial == k.serial } }) throw Notice("صندوق واحد لا يكون متروكاً ومستلماً في الفاتورة نفسها")
                         val pos = if (location.required) location.check() ?: throw Notice("فعّل الموقع واسمح للتطبيق باستخدامه ثم أعد المحاولة")
-                        else Locations.current(context, 4_000, 60_000).let { Position(it?.lat, it?.lng) }
+                        else Locations.current(context, 4_000, 60_000).toPosition()
                         val sale = buildJsonObject {
                             put("id", id)
                             put("invoice_no", uniqueInvoiceNumber(truck?.str("code") ?: "X", id))
@@ -234,12 +298,49 @@ fun SaleScreen(initialCustomer: String?) {
                         repo.enqueue("sale", sale)
                         // Every invoice also marks the route, when a position is known.
                         if (pos.lat != null && pos.lng != null) runCatching { repo.recordPoint(user.id, snap.tripId!!, trip.str("truck_id"), pos.lat, pos.lng, isoNow()) }
+                        // The invoice is saved; nothing after this point may fail the save.
+                        runCatching {
+                            val at = isoNow()
+                            for ((action, list) in listOf("deliver" to kept, "collect" to collected)) {
+                                if (list.isEmpty()) continue
+                                repo.enqueue("box_move", boxMoveRequest(
+                                    user.id, action, list.map { it.id to it.serial }, at, truckId = trip.str("truck_id"), customerId = chosen,
+                                    tripId = snap.tripId, saleId = if (action == "deliver") id else null, lat = pos.lat, lng = pos.lng,
+                                ))
+                            }
+                        }.onFailure { toast("تعذّر حفظ حركة الصناديق؛ سجّلها من صفحة العميل") }
                         toast("تم حفظ الفاتورة")
-                        nav.replace(Screen.Invoice(id))
+                        val ask = runCatching {
+                            offerCustomerLocation(
+                                customer, pos.lat, pos.lng, pos.accuracy, pos.time, System.currentTimeMillis(),
+                                customerUnsent = snap.pending.any { it.kind == "customer" && it.id == chosen }, supported = snap.boxSupport,
+                            )
+                        }.getOrDefault(false)
+                        if (ask) saved = SavedSale(id, chosen, customer.str("name") ?: "", user.id, pos.lat!!, pos.lng!!, pos.accuracy!!)
+                        else nav.replace(Screen.Invoice(id))
                     }
                 }
             }
         }
+    }
+}
+
+/** An invoice that was just saved for a customer whose location is still unknown. */
+private data class SavedSale(val saleId: String, val customerId: String, val name: String, val userId: String, val lat: Double, val lng: Double, val accuracy: Float)
+
+/** One row of the invoice's box card: a count, the scanned numbers and a scan button. */
+@Composable
+private fun BoxLine(label: String, count: String, boxes: List<ScannedBox>, over: Boolean, scan: () -> Unit) {
+    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Column(Modifier.weight(1f)) {
+                Text(label, style = T.sm.medium)
+                Text(count, style = T.sm.bold.color(if (over) Ice.destructive else Ice.foreground))
+            }
+            Btn("مسح", scan, variant = Variant.Outline, height = 44.dp, icon = Lucide.QrCode)
+        }
+        if (boxes.isNotEmpty()) Text(boxes.mapNotNull { boxNumber(it.serial) }.joinToString("، "), style = T.xs.muted)
+        if (over) Text("أكثر من الكمية المباعة", style = T.xs.color(Ice.destructive))
     }
 }
 

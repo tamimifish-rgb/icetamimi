@@ -99,6 +99,8 @@ class Repo(private val context: Context, private val httpClient: okhttp3.OkHttpC
 
     @Volatile private var generation = 0
     private var busy = false
+    /** Something was saved while a sync was running: run once more when it ends. */
+    private var again = false
     private var loop: Job? = null
 
     init {
@@ -218,14 +220,15 @@ class Repo(private val context: Context, private val httpClient: okhttp3.OkHttpC
 
     suspend fun setAside(op: OutboxOp) {
         val owner = me.value?.id ?: return
-        withContext(Dispatchers.IO) { store.setClosingAside(owner, op.id) }
+        withContext(Dispatchers.IO) { store.setAside(owner, op.id) }
         reloadPending()
     }
 
     suspend fun syncNow() {
         val user = me.value ?: return
-        if (busy) return
+        if (busy) { again = true; return }
         busy = true
+        again = false
         syncing.value = true
         val version = generation
         try {
@@ -244,6 +247,7 @@ class Repo(private val context: Context, private val httpClient: okhttp3.OkHttpC
             syncing.value = false
             reloadPending()
             trackingController?.invoke(this)
+            if (again && generation == version && online.value) { again = false; scope.launch { syncNow() } }
         }
     }
 

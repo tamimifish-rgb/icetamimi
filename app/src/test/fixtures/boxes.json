@@ -1,0 +1,199 @@
+{
+ "tables": {
+  "pureice_boxes": [
+   {
+    "id": "b1",
+    "serial": "TM-ICE-000001",
+    "status": "truck",
+    "truck_id": "t1",
+    "customer_id": null,
+    "notes": null,
+    "moved_at": "2026-11-14T06:00:00+00:00",
+    "updated_at": "2026-11-14T06:00:00+00:00",
+    "updated_by": null
+   },
+   {
+    "id": "b2",
+    "serial": "TM-ICE-000002",
+    "status": "truck",
+    "truck_id": "t1",
+    "customer_id": null,
+    "notes": null,
+    "moved_at": "2026-11-14T06:00:00+00:00",
+    "updated_at": "2026-11-14T06:00:00+00:00",
+    "updated_by": null
+   },
+   {
+    "id": "b3",
+    "serial": "TM-ICE-000003",
+    "status": "customer",
+    "truck_id": null,
+    "customer_id": "c1",
+    "notes": null,
+    "moved_at": "2026-11-13T09:30:00+00:00",
+    "updated_at": "2026-11-14T06:00:00+00:00",
+    "updated_by": null
+   },
+   {
+    "id": "b4",
+    "serial": "TM-ICE-000004",
+    "status": "factory",
+    "truck_id": null,
+    "customer_id": null,
+    "notes": null,
+    "moved_at": "2026-11-14T06:00:00+00:00",
+    "updated_at": "2026-11-14T06:00:00+00:00",
+    "updated_by": null
+   },
+   {
+    "id": "b5",
+    "serial": "TM-ICE-000005",
+    "status": "factory",
+    "truck_id": null,
+    "customer_id": null,
+    "notes": null,
+    "moved_at": "2026-11-14T06:00:00+00:00",
+    "updated_at": "2026-11-14T06:00:00+00:00",
+    "updated_by": null
+   },
+   {
+    "id": "b6",
+    "serial": "TM-ICE-000006",
+    "status": "damaged",
+    "truck_id": null,
+    "customer_id": null,
+    "notes": "كسر في الغطاء",
+    "moved_at": "2026-11-14T06:00:00+00:00",
+    "updated_at": "2026-11-14T06:00:00+00:00",
+    "updated_by": null
+   },
+   {
+    "id": "b7",
+    "serial": "TM-ICE-000007",
+    "status": "elsewhere",
+    "truck_id": null,
+    "customer_id": null,
+    "notes": "عند ورشة الإصلاح",
+    "moved_at": "2026-11-14T06:00:00+00:00",
+    "updated_at": "2026-11-14T06:00:00+00:00",
+    "updated_by": null
+   },
+   {
+    "id": "b8",
+    "serial": "TM-ICE-000008",
+    "status": "customer",
+    "truck_id": null,
+    "customer_id": "c2",
+    "notes": null,
+    "moved_at": "2026-11-14T06:00:00+00:00",
+    "updated_at": "2026-11-14T06:00:00+00:00",
+    "updated_by": null
+   },
+   {
+    "id": "b9",
+    "serial": "TM-ICE-000009",
+    "status": "new",
+    "truck_id": null,
+    "customer_id": null,
+    "notes": null,
+    "moved_at": null,
+    "updated_at": "2026-11-14T06:00:00+00:00",
+    "updated_by": null
+   },
+   {
+    "id": "b10",
+    "serial": "TM-ICE-000010",
+    "status": "new",
+    "truck_id": null,
+    "customer_id": null,
+    "notes": null,
+    "moved_at": null,
+    "updated_at": "2026-11-14T06:00:00+00:00",
+    "updated_by": null
+   },
+   {
+    "id": "b11",
+    "serial": "TM-ICE-000011",
+    "status": "new",
+    "truck_id": null,
+    "customer_id": null,
+    "notes": null,
+    "moved_at": null,
+    "updated_at": "2026-11-14T06:00:00+00:00",
+    "updated_by": null
+   },
+   {
+    "id": "b12",
+    "serial": "TM-ICE-000012",
+    "status": "new",
+    "truck_id": null,
+    "customer_id": null,
+    "notes": null,
+    "moved_at": null,
+    "updated_at": "2026-11-14T06:00:00+00:00",
+    "updated_by": null
+   }
+  ],
+  "pureice_box_variants": [
+   {
+    "variant_id": "v1"
+   }
+  ],
+  "pureice_box_events": [
+   {
+    "id": "e2",
+    "batch_id": "e2",
+    "box_id": "b3",
+    "action": "deliver",
+    "status": "customer",
+    "truck_id": "t1",
+    "customer_id": "c1",
+    "trip_id": null,
+    "sale_id": "s0",
+    "from_status": "truck",
+    "from_truck_id": "t1",
+    "from_customer_id": null,
+    "applied": true,
+    "unexpected": false,
+    "notes": null,
+    "lat": 14.53,
+    "lng": 49.12,
+    "created_by": "11111111-1111-1111-1111-111111111111",
+    "created_at": "2026-11-13T09:30:00+00:00",
+    "event_at": "2026-11-13T09:30:00+00:00",
+    "recorded_at": "2026-11-13T09:31:00+00:00"
+   },
+   {
+    "id": "e1",
+    "batch_id": "e1",
+    "box_id": "b3",
+    "action": "load",
+    "status": "truck",
+    "truck_id": "t1",
+    "customer_id": null,
+    "trip_id": null,
+    "sale_id": null,
+    "from_status": "new",
+    "from_truck_id": null,
+    "from_customer_id": null,
+    "applied": true,
+    "unexpected": false,
+    "notes": null,
+    "lat": null,
+    "lng": null,
+    "created_by": "11111111-1111-1111-1111-111111111111",
+    "created_at": "2026-11-13T05:10:00+00:00",
+    "event_at": "2026-11-13T05:10:00+00:00",
+    "recorded_at": "2026-11-13T05:10:05+00:00"
+   }
+  ],
+  "pureice_customer_locations": []
+ },
+ "rpc": {
+  "pureice_box_support": 1,
+  "pureice_box_move": {},
+  "pureice_set_customer_location": {},
+  "pureice_box_add": 5,
+  "save_invoice": {}
+ }
+}

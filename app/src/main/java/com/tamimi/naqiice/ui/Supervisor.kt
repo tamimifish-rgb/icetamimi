@@ -71,6 +71,7 @@ fun TripsScreen() {
     val toast = rememberToast()
     var date by remember { mutableStateOf(adenDay()) }
     val pick = remember { mutableStateMapOf<String, String>() }
+    val boxSupport = repo.snapshot.collectAsState().value.boxSupport
 
     val load = rememberLoaded(date) { bearer ->
         coroutineScope {
@@ -104,6 +105,7 @@ fun TripsScreen() {
     // div.space-y-4
     Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
         PageTitle("الشاحنات") { DateInput(date, Modifier.width(160.dp)) { date = it } }
+        if (boxSupport) Btn("الصناديق", { nav.go(Screen.Boxes) }, variant = Variant.Outline, height = 44.dp, icon = Lucide.Boxes)
         val data = load.data
         if (load.error != null) LoadError(load.error, load.reload)
         else if (data == null) Empty("جارٍ التحميل…")

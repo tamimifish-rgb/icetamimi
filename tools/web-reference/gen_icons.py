@@ -9,7 +9,7 @@ for f in glob.glob(SRC+'/**/*.tsx', recursive=True):
         for n in m.group(1).split(','):
             n=n.strip().split(' as ')[0].strip()
             if n: names.add(n)
-names |= {'X','Check','ChevronDown','Calendar','Trash2','Pencil','Download','FileSpreadsheet','MapPinned','Store','Package','KeyRound','Building2','Navigation','Image','Info'}
+names |= {'X','Check','ChevronDown','Calendar','Trash2','Pencil','Download','FileSpreadsheet','MapPinned','Store','Package','KeyRound','Building2','Navigation','Image','Info','QrCode','Flashlight','Factory','Boxes'}
 def kebab(n):
     n=re.sub(r'Icon$','',n)
     s=re.sub(r'([a-z])([A-Z0-9])', r'\1-\2', n)

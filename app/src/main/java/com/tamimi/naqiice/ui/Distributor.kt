@@ -69,7 +69,7 @@ fun TodayScreen() {
     val trip = snap.trip
     val truck = snap.truck(trip?.str("truck_id") ?: me?.truckId)
     val toApprove = snap.unapprovedLoads
-    val failed = snap.pending.filter { it.lastError != null }
+    val failed = snap.pending.filter { it.lastError != null && it.state != "set_aside" }
 
     Column(verticalArrangement = Arrangement.spacedBy(20.dp)) {
         PageTitle(truck?.str("name")?.let { "$it — الحملة" } ?: "الحملة", spacing = 20.dp)
@@ -227,10 +227,12 @@ private fun TrackingStatus(snap: Snapshot) {
 @Composable
 fun MoreScreen() {
     val nav = LocalNav.current
-    val items = listOf(
+    val snap by LocalRepo.current.snapshot.collectAsState()
+    val items = listOfNotNull(
         Quick(Screen.Payment(), "تحصيل دين", Lucide.Wallet), Quick(Screen.NewCustomer, "إضافة عميل", Lucide.UserPlus),
         Quick(Screen.FreezerAction(), "حركة ثلاجة", Lucide.Snowflake), Quick(Screen.Expenses, "المصروفات", Lucide.Receipt),
         Quick(Screen.Maintenance, "الصيانة", Lucide.Wrench), Quick(Screen.InvoiceChanges, "طلبات إلغاء وتعديل الفواتير", Lucide.FileX2),
+        if (snap.boxSupport) Quick(Screen.Boxes, "الصناديق", Lucide.Boxes) else null,
         Quick(Screen.Closing, "إغلاق اليوم", Lucide.ClipboardCheck),
     )
     Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
@@ -384,6 +386,7 @@ fun CustomerDetailScreen(id: String) {
                         Icon(Lucide.Phone, null, Modifier.size(16.dp), tint = Ice.primary)
                     }
                 }
+                CustomerLocationLink(customer)
             }
         }
         StatGrid(listOf(
@@ -408,6 +411,7 @@ fun CustomerDetailScreen(id: String) {
                 }
             }
         }
+        CustomerBoxes(id)
         Column {
             SectionTitle("السجل")
             if (!online) Text("السجل الكامل يظهر عند توفر الإنترنت.", style = T.xs.muted, modifier = Modifier.padding(bottom = 8.dp))

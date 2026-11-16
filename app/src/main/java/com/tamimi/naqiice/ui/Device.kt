@@ -55,7 +55,10 @@ import java.util.UUID
 // ---- location gate --------------------------------------------------------------------
 
 /** A position for a record; both null means "saved without location" (invoices only). */
-data class Position(val lat: Double?, val lng: Double?)
+data class Position(val lat: Double?, val lng: Double?, val accuracy: Float? = null, val time: Long? = null)
+
+fun com.tamimi.naqiice.tracking.Fix?.toPosition() =
+    Position(this?.lat, this?.lng, this?.accuracy?.takeIf { it != Float.MAX_VALUE }, this?.time)
 
 class LocationGate(
     /** Only staff who are distributors (and not managers) must share their location. */
@@ -94,7 +97,7 @@ fun rememberLocationGate(allowNoFix: Boolean = false): LocationGate {
                 val next = locationDecision(granted, fix != null, missing[0], System.currentTimeMillis(), allowNoFix)
                 decision = next; denied = !granted; busy = false
                 if (granted) TrackingService.update(context, repo)
-                if (next == LocationDecision.BLOCKED) null else Position(fix?.lat, fix?.lng)
+                if (next == LocationDecision.BLOCKED) null else fix.toPosition()
             }
         }
     }
@@ -138,6 +141,9 @@ fun openAppSettings(context: Context) {
 }
 
 // ---- photos ---------------------------------------------------------------------------
+
+fun cameraGranted(context: Context): Boolean =
+    androidx.core.content.ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) == android.content.pm.PackageManager.PERMISSION_GRANTED
 
 object Photos {
     private fun dir(context: Context) = File(context.filesDir, "photos").apply { mkdirs() }
@@ -197,10 +203,18 @@ private fun rememberPhotoSource(onChange: (String?) -> Unit): Pair<() -> Unit, (
         if (taken && file != null) accept(Photos.uriFor(context, file), file) else file?.delete()
     }
     val gallery = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { accept(it) }
-    val openCamera = {
+    val launchCamera = {
         val file = Photos.newCaptureFile(context)
         capture = file
-        runCatching { camera.launch(Photos.uriFor(context, file)) }.onFailure { toast("تعذّر فتح الكاميرا") }
+        runCatching { camera.launch(Photos.uriFor(context, file)) }.onFailure { capture = null; file.delete(); toast("تعذّر فتح الكاميرا") }
+        Unit
+    }
+    // The app declares CAMERA (box stickers), so the system camera needs it granted as well.
+    val cameraPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+        if (granted) launchCamera() else toast("اسمح للتطبيق باستخدام الكاميرا من إعدادات الهاتف")
+    }
+    val openCamera = {
+        if (cameraGranted(context)) launchCamera() else runCatching { cameraPermission.launch(Manifest.permission.CAMERA) }
         Unit
     }
     val openGallery = { runCatching { gallery.launch("image/*") }; Unit }

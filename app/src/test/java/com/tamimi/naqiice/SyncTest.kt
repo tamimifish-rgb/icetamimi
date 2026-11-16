@@ -1,7 +1,13 @@
 package com.tamimi.naqiice
 
 import com.tamimi.naqiice.core.Row
+import com.tamimi.naqiice.core.bool
+import com.tamimi.naqiice.core.boxMoveRequest
+import com.tamimi.naqiice.core.boxStatusAfter
+import com.tamimi.naqiice.core.num
 import com.tamimi.naqiice.core.rows
+import com.tamimi.naqiice.core.strings
+import com.tamimi.naqiice.core.with
 import com.tamimi.naqiice.core.str
 import com.tamimi.naqiice.data.ApiError
 import com.tamimi.naqiice.data.MemoryStore
@@ -10,7 +16,7 @@ import com.tamimi.naqiice.data.Snapshot
 import com.tamimi.naqiice.data.SyncEngine
 import com.tamimi.naqiice.data.cacheObject
 import com.tamimi.naqiice.data.enqueue
-import com.tamimi.naqiice.data.setClosingAside
+import com.tamimi.naqiice.data.setAside
 import kotlinx.coroutines.test.runTest
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
@@ -42,6 +48,10 @@ private class FakeServer : Remote {
     var failCustomerInsert = false
     var included: List<String> = emptyList()
     var onSelect: (() -> Unit)? = null
+    /** true: the box feature is live; false: the function is missing; null: the server cannot say. */
+    var boxSupport: Boolean? = false
+    var failBoxMove = false
+    var failLocation = false
 
     fun table(name: String) = tables.getOrPut(name) { ArrayList() }
 
@@ -55,6 +65,7 @@ private class FakeServer : Remote {
             if (value.startsWith("eq.")) rows = rows.filter { it.str(key) == value.removePrefix("eq.") }
             if (value.startsWith("neq.")) rows = rows.filter { it.str(key) != value.removePrefix("neq.") }
             if (value == "is.null") rows = rows.filter { it.str(key) == null }
+            if (value.startsWith("in.(")) value.removePrefix("in.(").removeSuffix(")").split(',').let { set -> rows = rows.filter { it.str(key) in set } }
         }
         return rows
     }
@@ -98,6 +109,32 @@ private class FakeServer : Remote {
                 put("closing", JsonNull)
             }
             "pureice_deposit_support" -> throw ApiError(404, "PGRST202", "missing")
+            "pureice_box_support" -> return when (boxSupport) {
+                true -> JsonPrimitive(1)
+                false -> throw ApiError(404, "PGRST202", "missing")
+                null -> throw ApiError(503, "PGRST000", "unavailable")
+            }
+            "pureice_box_move" -> {
+                if (failBoxMove) throw ApiError(400, "P0001", "صندوق غير معروف")
+                val request = args["p_request"] as JsonObject
+                check(args["p_sent_at"] != null)
+                for (entry in request.rows("boxes")) {
+                    if (table("pureice_box_events").none { it.str("id") == entry.str("id") }) table("pureice_box_events").add(buildJsonObject { put("id", entry.str("id")); put("batch_id", request.str("id")) })
+                    val status = boxStatusAfter(request.str("action")!!)
+                    table("pureice_boxes").replaceAll { box ->
+                        if (box.str("serial") != entry.str("serial")) box
+                        else box.with("status" to JsonPrimitive(status), "customer_id" to (if (status == "customer") request["customer_id"]!! else JsonNull), "truck_id" to (if (status == "truck") request["truck_id"]!! else JsonNull))
+                    }
+                }
+                return JsonNull
+            }
+            "pureice_set_customer_location" -> {
+                if (failLocation) throw ApiError(400, "P0001", "العميل غير موجود")
+                val request = args["p_request"] as JsonObject
+                table("pureice_customer_locations").add(buildJsonObject { put("id", request.str("id")) })
+                table("customers").replaceAll { if (it.str("id") == request.str("customer_id") && it.str("lat") == null) it.with("lat" to request["lat"]!!, "lng" to request["lng"]!!) else it }
+                return JsonNull
+            }
         }
         throw ApiError(404, "PGRST202", "missing")
     }
@@ -119,6 +156,18 @@ private fun closing(id: String, counted: Int = 9000) = buildJsonObject {
 private fun customer(id: String) = buildJsonObject {
     put("id", id); put("name", "بقالة النور"); put("phone", JsonNull); put("region_id", "r1"); put("location_notes", "")
     put("lat", JsonNull); put("lng", JsonNull); put("truck_id", "t1"); put("created_by", OWNER)
+}
+
+private fun boxMove(id: String, action: String, serial: String, customer: String? = "c1", saleId: String? = null) =
+    boxMoveRequest(OWNER, action, listOf(id to serial), "2026-11-14T08:00:05.000Z", truckId = "t1", customerId = customer, tripId = TRIP, saleId = saleId)
+
+private fun location(id: String, saleId: String, customer: String = "c1") = buildJsonObject {
+    put("id", id); put("customer_id", customer); put("sale_id", saleId); put("lat", 14.53); put("lng", 49.12); put("accuracy", 8)
+    put("created_by", OWNER); put("created_at", "2026-11-14T08:00:09.000Z")
+}
+
+private fun boxRow(n: Int, status: String = "truck") = buildJsonObject {
+    put("id", "b$n"); put("serial", "TM-ICE-00000$n"); put("status", status); put("truck_id", if (status == "truck") JsonPrimitive("t1") else JsonNull); put("customer_id", JsonNull)
 }
 
 private fun openTrip(server: FakeServer, status: String = "open") {
@@ -210,7 +259,7 @@ class SyncTest {
         assertEquals(1, result.failed)
         assertEquals("review", store.getOp("k1")!!.state)
         assertFalse(server.calls.contains("rpc:submit_closing"))
-        store.setClosingAside(OWNER, "k1")
+        store.setAside(OWNER, "k1")
         assertEquals("set_aside", store.getOp("k1")!!.state)
         engine.flushOutbox(OWNER)
         assertEquals("set_aside", store.getOp("k1")!!.state) // never uploaded, never deleted
@@ -269,5 +318,117 @@ class SyncTest {
         val foreign = Snapshot(ref, store.outboxFor(OWNER), OTHER)
         assertNull(foreign.ref)
         assertTrue(foreign.pending.isEmpty())
+    }
+
+    // ---- boxes and customer locations -------------------------------------------------
+
+    private fun boxesLive() {
+        server.boxSupport = true
+        server.table("pureice_boxes").addAll(listOf(boxRow(1), boxRow(2)))
+        server.table("pureice_box_variants").add(buildJsonObject { put("variant_id", "v1") })
+        server.table("customers").add(customer("c1").with("active" to JsonPrimitive(true)))
+        openTrip(server)
+    }
+
+    @Test fun boxesAndLocationUploadAfterTheirInvoice() = runTest {
+        boxesLive()
+        store.enqueue(OWNER, "sale", sale("s1"))
+        store.enqueue(OWNER, "box_move", boxMove("m1", "deliver", "TM-ICE-000001", saleId = "s1"))
+        store.enqueue(OWNER, "customer_location", location("l1", "s1"))
+        assertEquals(SyncEngine.FlushResult(3, 0), engine.flushOutbox(OWNER))
+        assertEquals(listOf("rpc:save_invoice", "rpc:pureice_box_move", "rpc:pureice_set_customer_location"), server.calls)
+        server.included = listOf("s1")
+        val ref = engine.fetchRef(OWNER)
+        // Cleared only because the server holds their ids; the fetched rows show the effect.
+        assertTrue(store.outboxFor(OWNER).isEmpty())
+        assertEquals(true, ref.bool("boxSupport"))
+        assertEquals("customer", ref.rows("boxes").first { it.str("serial") == "TM-ICE-000001" }.str("status"))
+        assertEquals(listOf("v1"), ref.strings("boxVariants"))
+        assertEquals(14.53, ref.rows("customers").first().num("lat"), 0.0)
+    }
+
+    @Test fun failedInvoiceHoldsItsLocationButNotItsBoxes() = runTest {
+        boxesLive()
+        server.failInvoice = "المخزون غير كاف"
+        store.enqueue(OWNER, "sale", sale("s1"))
+        store.enqueue(OWNER, "box_move", boxMove("m1", "deliver", "TM-ICE-000001", saleId = "s1"))
+        store.enqueue(OWNER, "customer_location", location("l1", "s1"))
+        engine.flushOutbox(OWNER)
+        assertEquals("blocked", store.getOp("s1")!!.state)
+        assertEquals("acknowledged", store.getOp("m1")!!.state) // the box is physically at the customer
+        assertEquals("blocked", store.getOp("l1")!!.state)
+        assertFalse("rpc:pureice_set_customer_location" in server.calls)
+    }
+
+    @Test fun boxesAndLocationsNeverHoldAClosingBack() = runTest {
+        boxesLive()
+        server.failBoxMove = true
+        server.failLocation = true
+        store.enqueue(OWNER, "box_move", boxMove("m1", "collect", "TM-ICE-000009"))
+        store.enqueue(OWNER, "customer_location", location("l1", "s0"))
+        store.enqueue(OWNER, "closing", closing("k1"))
+        engine.flushOutbox(OWNER)
+        assertEquals("blocked", store.getOp("m1")!!.state)
+        assertEquals("blocked", store.getOp("l1")!!.state)
+        assertEquals("acknowledged", store.getOp("k1")!!.state)
+        assertTrue("rpc:submit_closing" in server.calls)
+        // A record the server keeps refusing can be parked; it is kept, never uploaded again.
+        store.setAside(OWNER, "m1")
+        server.failBoxMove = false
+        engine.flushOutbox(OWNER)
+        assertEquals("set_aside", store.getOp("m1")!!.state)
+    }
+
+    @Test fun sideRecordsStayUntilTheServerHoldsTheirIds() = runTest {
+        boxesLive()
+        store.enqueue(OWNER, "box_move", boxMove("m1", "deliver", "TM-ICE-000001"))
+        engine.flushOutbox(OWNER)
+        server.table("pureice_box_events").clear() // e.g. a lost response followed by a rollback
+        engine.fetchRef(OWNER)
+        assertEquals("acknowledged", store.getOp("m1")!!.state)
+        server.table("pureice_box_events").add(buildJsonObject { put("id", "m1") })
+        engine.fetchRef(OWNER)
+        assertNull(store.getOp("m1"))
+    }
+
+    @Test fun unknownBoxSupportKeepsWhatThePhoneHas() = runTest {
+        boxesLive()
+        assertEquals(2, engine.fetchRef(OWNER).rows("boxes").size)
+        server.boxSupport = null
+        val ref = engine.fetchRef(OWNER)
+        assertEquals(true, ref.bool("boxSupport"))
+        assertEquals(2, ref.rows("boxes").size)
+        server.boxSupport = false
+        assertEquals(false, engine.fetchRef(OWNER).bool("boxSupport"))
+    }
+
+    @Test fun waitingBoxMovesAndLocationsShowAtOnce() {
+        val ref = buildJsonObject {
+            put("ownerId", OWNER); put("boxSupport", true)
+            put("boxes", buildJsonArray { add(boxRow(1)); add(boxRow(2)) })
+            put("boxVariants", buildJsonArray { add(JsonPrimitive("v1")) })
+            put("customers", buildJsonArray { add(customer("c1")) })
+        }
+        store.enqueue(OWNER, "box_move", boxMove("m1", "deliver", "TM-ICE-000001"))
+        store.enqueue(OWNER, "customer_location", location("l1", "s1"))
+        val snap = Snapshot(ref, store.outboxFor(OWNER), OWNER)
+        assertEquals(listOf("TM-ICE-000001"), snap.boxesWith("c1").map { it.str("serial") })
+        assertEquals(listOf("TM-ICE-000002"), snap.boxesOn("t1").map { it.str("serial") })
+        assertEquals(14.53, snap.customer("c1")!!.num("lat"), 0.0)
+        assertTrue(snap.isBoxVariant("v1"))
+        assertFalse(snap.isBoxVariant("v2"))
+        // Another account's snapshot never shows them.
+        val foreign = Snapshot(ref, store.outboxFor(OWNER), OTHER)
+        assertTrue(foreign.boxes.isEmpty())
+        assertFalse(foreign.boxSupport)
+        assertTrue(foreign.customers.isEmpty())
+    }
+
+    @Test fun customerCreatedOnThePhoneIsUsableBeforeItUploads() {
+        val ref = buildJsonObject { put("ownerId", OWNER); put("customers", buildJsonArray { add(customer("c1")) }) }
+        store.enqueue(OWNER, "customer", customer("c9"))
+        val snap = Snapshot(ref, store.outboxFor(OWNER), OWNER)
+        assertEquals(listOf("c1", "c9"), snap.customers.map { it.str("id") })
+        assertNotNull(snap.customer("c9"))
     }
 }

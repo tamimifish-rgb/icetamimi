@@ -39,23 +39,30 @@ class FixtureApp : PureIceApp() {
     }
 }
 
-class Fixture(private val data: JsonObject) : Interceptor {
+class Fixture(private val base: JsonObject) : Interceptor {
     companion object {
         /** distributor, supervisor or admin; set before the activity starts. */
         @Volatile var role = "distributor"
+        /** Returnable boxes are a native-only feature: off unless a test turns the server feature on. */
+        @Volatile var boxes = false
+        /** Every write the app sent: "POST /rest/v1/rpc/pureice_box_move {…}". */
+        val writes = java.util.concurrent.CopyOnWriteArrayList<String>()
+        private fun merge(into: JsonObject, extra: JsonObject): JsonObject {
+            val tables = into.obj("tables")!!.toMutableMap()
+            extra.obj("tables")?.forEach { (name, rows) -> tables[name] = JsonArray((tables[name].asRows()) + rows.asRows()) }
+            return into.with("tables" to JsonObject(tables), "rpc" to JsonObject((into.obj("rpc") ?: JsonObject(emptyMap())) + (extra.obj("rpc") ?: JsonObject(emptyMap()))))
+        }
         /** fixture.json plus every fixture.<area>.json: table rows are appended, rpc results merged. */
         fun load(): JsonObject {
             val files = File("../tools/web-reference").listFiles { f -> f.name.startsWith("fixture") && f.name.endsWith(".json") }!!.sortedBy { it.name }
             var merged = parseObject(files.first { it.name == "fixture.json" }.readText())
-            for (file in files.filter { it.name != "fixture.json" }) {
-                val extra = parseObject(file.readText())
-                val tables = merged.obj("tables")!!.toMutableMap()
-                extra.obj("tables")?.forEach { (name, rows) -> tables[name] = JsonArray((tables[name].asRows()) + rows.asRows()) }
-                merged = merged.with("tables" to JsonObject(tables), "rpc" to JsonObject((merged.obj("rpc") ?: JsonObject(emptyMap())) + (extra.obj("rpc") ?: JsonObject(emptyMap()))))
-            }
+            for (file in files.filter { it.name != "fixture.json" }) merged = merge(merged, parseObject(file.readText()))
             return merged
         }
     }
+
+    private val withBoxes by lazy { merge(base, parseObject(File("src/test/fixtures/boxes.json").readText())) }
+    private val data: JsonObject get() = if (boxes) withBoxes else base
 
     private fun tables(): Map<String, List<Row>> {
         val owner = data.str("owner")
@@ -69,6 +76,10 @@ class Fixture(private val data: JsonObject) : Interceptor {
         val request = chain.request()
         val url = request.url
         val path = url.encodedPath
+        if (request.method != "GET" && request.method != "HEAD") {
+            val body = request.body?.let { b -> okio.Buffer().also { b.writeTo(it) }.readUtf8() } ?: ""
+            writes.add("${request.method} $path $body")
+        }
         fun reply(body: JsonElement, status: Int = 200, range: String? = null): Response = Response.Builder()
             .request(request).protocol(Protocol.HTTP_1_1).code(status).message("fixture")
             .apply { if (range != null) header("Content-Range", range) }

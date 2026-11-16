@@ -150,6 +150,7 @@ fun AdminHomeScreen() {
 @Composable
 fun AdminSetupScreen() {
     val nav = LocalNav.current
+    val boxSupport = LocalRepo.current.snapshot.collectAsState().value.boxSupport
     val items = listOf(
         Triple(Lucide.Package, "المنتجات والأسعار", Screen.AdminProducts),
         Triple(Lucide.Store, "العملاء والأسعار الخاصة", Screen.AdminCustomers),
@@ -158,7 +159,7 @@ fun AdminSetupScreen() {
         Triple(Lucide.Users, "الموظفون والصلاحيات", Screen.AdminUsers),
         Triple(Lucide.Snowflake, "الثلاجات", Screen.AdminFreezers),
         Triple(Lucide.ClipboardCheck, "إغلاقات اليوم", Screen.Closings),
-    )
+    ) + if (boxSupport) listOf(Triple(Lucide.Boxes, "الصناديق", Screen.Boxes), Triple(Lucide.QrCode, "إعداد الصناديق", Screen.AdminBoxes)) else emptyList()
     Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
         PageTitle("الإعدادات")
         NavList(items.map { (icon, label, screen) -> Triple(icon, label) { nav.go(screen) } })
@@ -238,7 +239,7 @@ fun AdminCustomersScreen() {
             CrudField("location_notes", "وصف الموقع", hideInList = true),
             CrudField("active", "نشط", CrudType.BOOL, hideInList = true),
         ),
-        extra = { PriceEditor(it.str("id") ?: "") },
+        extra = { PriceEditor(it.str("id") ?: ""); CustomerLocationEditor(it) },
     )
 }
 

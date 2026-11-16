@@ -2,6 +2,8 @@ package com.tamimi.naqiice.data
 
 import com.tamimi.naqiice.core.Row
 import com.tamimi.naqiice.core.adenDay
+import com.tamimi.naqiice.core.bool
+import com.tamimi.naqiice.core.isoNow
 import com.tamimi.naqiice.core.jnum
 import com.tamimi.naqiice.core.num
 import com.tamimi.naqiice.core.numOrNull
@@ -112,6 +114,12 @@ fun withDeposit(row: Row, entry: Row?): Row {
     return out
 }
 
+/**
+ * Box moves and customer-location confirmations ride along with the accounting records but
+ * are never part of them: they cannot hold up a closing and are cleared on their own evidence.
+ */
+val SIDE_KINDS = setOf("box_move", "customer_location")
+
 // ---- engine ---------------------------------------------------------------------------
 
 class SyncEngine(
@@ -158,6 +166,18 @@ class SyncEngine(
             if (code == "23505") throw IllegalStateException("معرف العميل مستخدم دون تطابق موثق لهذا الحساب؛ الطلب والفاتورة محفوظان، راجع المسؤول")
             if (code == "42501") throw IllegalStateException("تعذّر رفع العميل: تحقق من الحساب والحملة المفتوحة ثم أعد المزامنة؛ لا تُعد إنشاء العميل أو الفاتورة")
             throw failure
+        }
+
+        if (op.kind in SIDE_KINDS) {
+            if (p.str("id") != op.id || p.str("created_by") != op.ownerId) throw IllegalStateException("تعارض معرف أو مالك السجل")
+            val box = op.kind == "box_move"
+            // The phone's clock at upload lets the server place the scan on its own clock.
+            remote.rpc(
+                if (box) "pureice_box_move" else "pureice_set_customer_location",
+                buildJsonObject { put("p_request", p); if (box) put("p_sent_at", isoNow()) }, bearer,
+            )
+            assertOwner(op.ownerId)
+            return null
         }
 
         if (p.str("payment_method") == "deposit") {
@@ -223,9 +243,13 @@ class SyncEngine(
                 .sortedWith(compareBy<OutboxOp> { rank(it) }.thenBy { it.createdAt })
             val blockedCustomers = HashSet<String>()
             val blockedTrips = HashSet<String>()
+            val blockedSales = HashSet<String>()
             for (op in ops) {
                 val dependsOnBlocked = (op.kind == "sale" && op.payload.str("customer_id") in blockedCustomers) ||
-                    (op.kind == "closing" && op.payload.str("trip_id") in blockedTrips)
+                    (op.kind == "closing" && op.payload.str("trip_id") in blockedTrips) ||
+                    // A location is confirmed for an invoice; a box can only go to a customer the server knows.
+                    (op.kind == "customer_location" && (op.payload.str("sale_id") in blockedSales || op.payload.str("customer_id") in blockedCustomers)) ||
+                    (op.kind == "box_move" && op.payload.str("customer_id") in blockedCustomers)
                 if (dependsOnBlocked) {
                     // Failed campaign writes stay queued, but must not prevent a read-only
                     // acknowledgement of a closing that was already committed.
@@ -242,6 +266,7 @@ class SyncEngine(
                         } catch (_: Exception) { /* falls through to blocked */ }
                     }
                     store.putOp(op.copy(lastError = "توجد سجلات مرتبطة لم تُرفع بعد؛ راجع الأخطاء أولاً", state = "blocked"))
+                    if (op.kind == "sale") blockedSales.add(op.id)
                     failed++
                     continue
                 }
@@ -254,7 +279,9 @@ class SyncEngine(
                     failed++
                     store.putOp(op.copy(state = if (e is ClosedClosingReview) "review" else "blocked", attempts = op.attempts + 1, lastError = e.userMessage("تعذّر الرفع")))
                     if (op.kind == "customer") blockedCustomers.add(op.id)
-                    op.payload.str("trip_id")?.let { blockedTrips.add(it) }
+                    if (op.kind == "sale") blockedSales.add(op.id)
+                    // Boxes and locations are not accounting: they never hold a closing back.
+                    if (op.kind !in SIDE_KINDS) op.payload.str("trip_id")?.let { blockedTrips.add(it) }
                 }
             }
         } finally { flushLock.unlock() }
@@ -284,6 +311,8 @@ class SyncEngine(
         guard()
         val bearer = remote.token()
         guard()
+        // Listed before any read: whatever these uploads changed is in the rows fetched below.
+        val sideSent = store.outboxFor(userId).filter { it.kind in SIDE_KINDS && it.state == "acknowledged" }
         val variants = remote.selectAll("product_variants", "select=*,products(name,active,sort)&active=eq.true&order=sort,id", bearer)
         val regions = remote.selectAll("regions", "select=*&active=eq.true&order=sort,id", bearer)
         val customers = remote.selectAll("customers", "select=*&active=eq.true&order=id", bearer)
@@ -307,6 +336,29 @@ class SyncEngine(
         val deposits = if (tripId != null && supported("pureice_deposit_support", bearer) == true) {
             remote.selectAll("pureice_deposits", "select=*&trip_id=eq.$tripId&order=id", bearer)
         } else emptyList()
+        guard()
+
+        // Returnable boxes (optional server feature). Unknown answer: keep what the phone has.
+        val previous = store.cacheObject(userId, "ref")
+        val boxSupport = supported("pureice_box_support", bearer)
+        val boxes = when (boxSupport) {
+            true -> remote.selectAll("pureice_boxes", "select=*&order=serial,id", bearer)
+            false -> emptyList()
+            null -> previous?.rows("boxes") ?: emptyList()
+        }
+        val boxVariants = when (boxSupport) {
+            true -> remote.selectAll("pureice_box_variants", "select=variant_id&order=variant_id", bearer).mapNotNull { it.str("variant_id") }
+            false -> emptyList()
+            null -> previous?.strings("boxVariants") ?: emptyList()
+        }
+        guard()
+        // A side record is cleared only when the server holds its UUID.
+        val sideEvidence = HashSet<String>()
+        if (boxSupport == true) for ((kind, table) in listOf("box_move" to "pureice_box_events", "customer_location" to "pureice_customer_locations")) {
+            for (ids in sideSent.filter { it.kind == kind }.map { it.id }.chunked(40)) {
+                remote.select(table, "select=id&id=in.(${ids.joinToString(",")})", bearer).mapNotNullTo(sideEvidence) { it.str("id") }
+            }
+        }
         guard()
 
         // The current campaign may already be a different one (or absent). Fetch evidence
@@ -339,6 +391,9 @@ class SyncEngine(
             put("paymentsToday", JsonArray(accounting.rows("payments").map { withDeposit(it, deposit("payment", it.str("id"))) }))
             put("expensesToday", accounting["expenses"].orNull() ?: JsonArray(emptyList()))
             put("closing", accounting["closing"].orNull() ?: JsonNull)
+            put("boxSupport", boxSupport ?: (previous?.bool("boxSupport") == true))
+            put("boxes", JsonArray(boxes))
+            put("boxVariants", JsonArray(boxVariants.map { JsonPrimitive(it) }))
             put("day", adenDay())
             put("pulledAt", System.currentTimeMillis())
         }
@@ -347,7 +402,11 @@ class SyncEngine(
             store.setCacheObject(userId, "ref", ref)
             val included = includedIds.toHashSet()
             for (op in store.outboxFor(userId)) {
-                val uploaded = (op.id in included || op.kind == "customer") && op.state == "acknowledged"
+                val uploaded = op.state == "acknowledged" && when (op.kind) {
+                    "customer" -> true
+                    in SIDE_KINDS -> op.id in sideEvidence
+                    else -> op.id in included
+                }
                 val redundant = op.state == "reconciled" && closingEvidence.containsKey(op.id)
                 if (!uploaded && !redundant) continue
                 if (op.kind == "customer" && !compatibleCustomer(op, customers.firstOrNull { it.str("id") == op.id })) continue

@@ -334,6 +334,11 @@ sealed interface Screen {
     data object AdminFreezers : Screen
     data object AdminUsers : Screen
     data object AdminCompany : Screen
+
+    // Returnable boxes (shown only when the server has the feature).
+    data object Boxes : Screen
+    data class Box(val id: String) : Screen
+    data object AdminBoxes : Screen
 }
 
 class Nav(home: Screen) {
@@ -341,7 +346,11 @@ class Nav(home: Screen) {
     val current: Screen get() = stack.last()
     fun go(screen: Screen) { if (stack.last() != screen) stack.add(screen) }
     /** Replaces the current screen, e.g. after saving a form. */
-    fun replace(screen: Screen) { stack.removeAt(stack.lastIndex); go(screen) }
+    fun replace(screen: Screen) {
+        // The current screen may be the only one (opened from the bottom bar).
+        if (stack.isNotEmpty()) stack.removeAt(stack.lastIndex)
+        if (stack.lastOrNull() != screen) stack.add(screen)
+    }
     /** Bottom-bar destinations start a fresh stack. */
     fun home(screen: Screen) { stack.clear(); stack.add(screen) }
     fun back(): Boolean = if (stack.size > 1) { stack.removeAt(stack.lastIndex); true } else false
@@ -376,7 +385,8 @@ fun rememberOperation(): Operation {
             if (!busy.value) {
                 busy.value = true
                 val id = holder[0] ?: UUID.randomUUID().toString().also { holder[0] = it }
-                scope.launch {
+                // Always continues on the main thread: the action updates the screen after saving.
+                scope.launch(kotlinx.coroutines.Dispatchers.Main.immediate) {
                     try { action(id); holder[0] = null } catch (e: Exception) {
                         Toast.makeText(context, e.userMessage(), Toast.LENGTH_LONG).show()
                     } finally { busy.value = false }
@@ -392,7 +402,12 @@ class Notice(message: String) : Exception(message)
 @Composable
 fun rememberToast(): (String) -> Unit {
     val context = LocalContext.current
-    return remember { { message: String -> Toast.makeText(context, message, Toast.LENGTH_SHORT).show() } }
+    return remember {
+        { message: String ->
+            val show = { Toast.makeText(context, message, Toast.LENGTH_SHORT).show() }
+            if (android.os.Looper.myLooper() == android.os.Looper.getMainLooper()) show() else { android.os.Handler(android.os.Looper.getMainLooper()).post { show() }; Unit }
+        }
+    }
 }
 
 // ---- buttons --------------------------------------------------------------------------

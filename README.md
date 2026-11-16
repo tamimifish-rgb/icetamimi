@@ -90,3 +90,23 @@ secret key is in this repository or in the app.
   1600 px, before upload, to suit slow connections.
 - Tracking continues only while the app's process is alive. Force-stopping the app or
   restarting the phone stops it until the app is opened again.
+
+## Returnable boxes and customer locations (3.1.0)
+
+Each box of مجروش أبو ١٠ carries a sticker with a serial (`TM-ICE-000001`) and a QR code holding
+exactly that serial. The app tracks where every box is: not scanned yet, factory, a truck, a
+customer, elsewhere, damaged or written off.
+
+- Supervisor: الشاحنات → الصناديق → "تحميل على شاحنة" / "إعادة إلى المصنع" (scan many).
+- Distributor: on the invoice, scans only the boxes the customer keeps and any empties taken
+  back; the customer page lists the customer's boxes and has "استلام فارغة" / "تسليم صندوق".
+- Any box: scan it to see where it is recorded and its history; managers can set its place.
+- After an invoice for a customer with no saved location (GPS fix within 50 m and one minute),
+  the distributor is asked to confirm they are at the customer's place; yes saves the location.
+
+Scanning uses CameraX + ZXing on the phone (offline, no Google services); a number can always be
+typed instead. Box moves and location confirmations go through the same offline outbox as
+invoices (`box_move`, `customer_location`) but never hold a closing back.
+
+The server side is `backend/90-boxes-and-customer-location.sql`; everything above stays hidden
+until `pureice_box_support()` exists on the server. See `backend/README.md`.

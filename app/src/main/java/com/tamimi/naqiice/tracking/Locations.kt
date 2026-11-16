@@ -37,7 +37,7 @@ object Locations {
         if (providers.isEmpty()) return null
         val now = System.currentTimeMillis()
         providers.mapNotNull { runCatching { manager.getLastKnownLocation(it) }.getOrNull() }
-            .filter { now - it.time <= maxAgeMs }.maxByOrNull { it.time }?.let { return it.toFix() }
+            .filter { ageOf(it, now) <= maxAgeMs }.minByOrNull { ageOf(it, now) }?.let { return it.toFix() }
         return withTimeoutOrNull(timeoutMs) {
             suspendCancellableCoroutine { continuation ->
                 val listener = object : LocationListener {
@@ -55,5 +55,18 @@ object Locations {
         }
     }
 
-    fun Location.toFix() = Fix(latitude, longitude, if (hasAccuracy()) accuracy else Float.MAX_VALUE, time)
+    /**
+     * How old a fix is, measured on the phone's uptime clock so that a wrong date or time
+     * setting cannot make an old position look fresh. Falls back to the wall clock.
+     */
+    fun ageOf(location: Location, now: Long = System.currentTimeMillis()): Long {
+        val nanos = location.elapsedRealtimeNanos
+        return if (nanos > 0) ((android.os.SystemClock.elapsedRealtimeNanos() - nanos) / 1_000_000).coerceAtLeast(0) else now - location.time
+    }
+
+    /** [Fix.time] is "now minus the fix's age" on the phone's own clock. */
+    fun Location.toFix(): Fix {
+        val now = System.currentTimeMillis()
+        return Fix(latitude, longitude, if (hasAccuracy()) accuracy else Float.MAX_VALUE, now - ageOf(this, now))
+    }
 }

@@ -63,6 +63,7 @@ import com.tamimi.naqiice.R
 import com.tamimi.naqiice.core.str
 import com.tamimi.naqiice.data.Me
 import com.tamimi.naqiice.data.OutboxOp
+import com.tamimi.naqiice.data.canSetAside
 import com.tamimi.naqiice.data.userMessage
 import kotlinx.coroutines.launch
 
@@ -269,6 +270,9 @@ private fun ScreenContent(screen: Screen, me: Me) {
         Screen.AdminFreezers -> Guard(me.isManager) { AdminFreezersScreen() }
         Screen.AdminUsers -> Guard(me.isAdmin) { AdminUsersScreen() }
         Screen.AdminCompany -> Guard(me.isAdmin) { AdminCompanyScreen() }
+        Screen.Boxes -> Guard(fieldRoles) { BoxesScreen() }
+        is Screen.Box -> Guard(fieldRoles) { BoxScreen(screen.id) }
+        Screen.AdminBoxes -> Guard(me.isAdmin) { AdminBoxesScreen() }
     }
 }
 
@@ -307,6 +311,7 @@ fun WebDialog(title: String, onClose: () -> Unit, content: @Composable () -> Uni
 private val KIND_LABELS = mapOf(
     "sale" to "فاتورة", "payment" to "تحصيل", "expense" to "مصروف", "closing" to "إغلاق",
     "customer" to "عميل", "maintenance" to "صيانة", "freezer_event" to "ثلاجة", "gps" to "موقع",
+    "box_move" to "صناديق", "customer_location" to "موقع عميل",
 )
 
 @Composable
@@ -376,7 +381,7 @@ private fun SyncDialog(pending: List<OutboxOp>, online: Boolean, syncing: Boolea
                     if (op.lastError != null && op.state != "review" && op.state != "set_aside") {
                         Btn("إعادة المحاولة", { scope.launch { repo.retry(op) } }, variant = Variant.Outline, enabled = !syncing && online, height = 44.dp)
                     }
-                    if (op.state == "review") Btn("تنحية هذا الطلب مع الاحتفاظ به", { confirmAside = op }, variant = Variant.Outline, enabled = !syncing)
+                    if (op.canSetAside()) Btn("تنحية هذا الطلب مع الاحتفاظ به", { confirmAside = op }, variant = Variant.Outline, enabled = !syncing)
                     if (op.state in listOf("review", "set_aside", "reconciled")) {
                         Btn("عرض بيانات الطلب", { selected = if (selected == op.id) null else op.id }, variant = Variant.Outline)
                         if (selected == op.id) Text(op.payload.toString(), style = T.xs.ltr.copy(fontFamily = FontFamily.Monospace))

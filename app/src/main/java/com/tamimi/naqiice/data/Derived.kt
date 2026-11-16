@@ -1,6 +1,9 @@
 package com.tamimi.naqiice.data
 
 import com.tamimi.naqiice.core.Row
+import com.tamimi.naqiice.core.bool
+import com.tamimi.naqiice.core.numOrNull
+import com.tamimi.naqiice.core.overlayBoxes
 import com.tamimi.naqiice.core.dedupeById
 import com.tamimi.naqiice.core.expectedCash
 import com.tamimi.naqiice.core.num
@@ -11,6 +14,7 @@ import com.tamimi.naqiice.core.str
 import com.tamimi.naqiice.core.strings
 import com.tamimi.naqiice.core.with
 import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
@@ -19,16 +23,25 @@ import kotlinx.serialization.json.put
  * What the screens show = the last server snapshot + records still waiting on this phone.
  * Everything here is pure so it can be unit-tested.
  */
-class Snapshot(ref: Row?, pending: List<OutboxOp>, val ownerId: String?) {
+class Snapshot(serverRef: Row?, outbox: List<OutboxOp>, val ownerId: String?) {
+    // The constructor parameters are deliberately not called `ref`/`pending`: inside this class
+    // those names must mean the filtered, combined properties below, never the raw inputs.
     /** Only this account's records and this account's snapshot are ever combined. */
-    val pending: List<OutboxOp> = pending.filter { it.ownerId == ownerId }
-    private val baseRef: Row? = ref?.takeIf { it.str("ownerId") == ownerId }
+    val pending: List<OutboxOp> = outbox.filter { it.ownerId == ownerId }
+    private val baseRef: Row? = serverRef?.takeIf { it.str("ownerId") == ownerId }
 
     val ref: Row? = baseRef?.let { base ->
         val known = base.rows("customers").mapNotNull { it.str("id") }.toHashSet()
         val local = this.pending.filter { it.kind == "customer" && it.id !in known }
             .map { it.payload.with("credit_limit" to JsonPrimitive(0), "active" to JsonPrimitive(true)) }
-        if (local.isEmpty()) base else base.with("customers" to JsonArray(base.rows("customers") + local))
+        // A location confirmed on this phone shows at once, so it is not asked for twice.
+        val located = this.pending.filter { it.kind == "customer_location" && it.state != "set_aside" }
+            .associateBy({ it.payload.str("customer_id") }, { it.payload })
+        if (local.isEmpty() && located.isEmpty()) base else base.with("customers" to JsonArray((base.rows("customers") + local).map { c ->
+            val fix = located[c.str("id")]
+            if (fix == null || c.numOrNull("lat") != null || c.numOrNull("lng") != null) c
+            else c.with("lat" to (fix["lat"] ?: JsonNull), "lng" to (fix["lng"] ?: JsonNull))
+        }))
     }
 
     val trip: Row? = ref?.obj("trip")
@@ -40,6 +53,18 @@ class Snapshot(ref: Row?, pending: List<OutboxOp>, val ownerId: String?) {
     val trucks: List<Row> = ref?.rows("trucks") ?: emptyList()
     val freezers: List<Row> = ref?.rows("freezers") ?: emptyList()
     val unapprovedLoads: List<Row> = ref?.rows("unapprovedLoads") ?: emptyList()
+
+    // ---- returnable boxes (only when the server has the feature) ----------------------
+    val boxSupport: Boolean = ref?.bool("boxSupport") == true
+    /** Server rows with the moves still waiting on this phone applied on top. */
+    val boxes: List<Row> by lazy {
+        overlayBoxes(ref?.rows("boxes") ?: emptyList(), this.pending.filter { it.kind == "box_move" && it.state != "set_aside" }.map { it.payload })
+    }
+    private val boxVariants: Set<String> = ref?.strings("boxVariants")?.toHashSet() ?: emptySet()
+    fun isBoxVariant(variantId: String?): Boolean = boxSupport && variantId != null && variantId in boxVariants
+    fun box(serial: String?): Row? = boxes.firstOrNull { it.str("serial") == serial }
+    fun boxesWith(customerId: String?): List<Row> = if (customerId == null) emptyList() else boxes.filter { it.str("status") == "customer" && it.str("customer_id") == customerId }
+    fun boxesOn(truckId: String?): List<Row> = if (truckId == null) emptyList() else boxes.filter { it.str("status") == "truck" && it.str("truck_id") == truckId }
 
     private val included: Set<String> = ref?.strings("includedIds")?.toHashSet() ?: emptySet()
     private val waiting: List<OutboxOp> = this.pending.filter { it.id !in included }
