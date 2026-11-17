@@ -48,9 +48,15 @@ with a wrong clock, and the location rules.
 
 ## 91-performance.sql
 
-Not applied yet. Before: it fits the access rules as they were on 2026-11-17; check that nobody has
-changed them since (the file's header says how they were taken). After: the performance advisor no
-longer lists `auth_rls_initplan` for the 10 tables, and the three `*_trip_id` indexes exist.
+Applied to the live project on 2026-11-17 as migration `pureice_performance_indexes_and_rls_initplan`,
+after checking that the live rules still matched the ones the file was generated from. Checked after:
+the three `*_trip_id` indexes exist; all 38 rules use the once-per-query form; a real distributor and
+a real manager each see exactly the `sales`, `sale_items` and `gps_points` rows they saw before; and
+the route map's query uses `gps_points_trip_id`.
+
+The performance advisor still lists 25 of the rules under `auth_rls_initplan`: those whose checks are
+only helper calls, such as `(SELECT public.is_manager(auth.uid()))`. Its text match looks for
+`select auth.uid()` literally; `EXPLAIN` shows these run once per query (`InitPlan`) like the rest.
 
 Tested on a scratch Postgres 16 with the live helper functions (`active_staff`, `has_role`,
 `is_manager`, `is_staff`), a stub `auth.uid()` and all 38 rules as they are live. An admin, a
