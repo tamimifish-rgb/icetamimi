@@ -141,6 +141,9 @@ class SyncEngine(
         "freezer_event" to "freezer_events", "gps" to "gps_points", "closing" to "closings", "customer" to "customers",
     )
 
+    /** Where an uploaded record's own row is, for records cleared by their UUID. */
+    private val recordTables = tables - "closing" - "customer" + ("sale" to "sales")
+
     private fun assertOwner(ownerId: String, message: String = "تغير الحساب") {
         if (remote.currentUserId() != ownerId) throw IllegalStateException(message)
     }
@@ -325,6 +328,7 @@ class SyncEngine(
         guard()
         // Listed before any read: whatever these uploads changed is in the rows fetched below.
         val sideSent = store.outboxFor(userId).filter { it.kind in SIDE_KINDS && it.state == "acknowledged" }
+        val recordsSent = store.outboxFor(userId).filter { it.kind in recordTables && it.state == "acknowledged" }
         val variants = remote.selectAll("product_variants", "select=*,products(name,active,sort)&active=eq.true&order=sort,id", bearer)
         val regions = remote.selectAll("regions", "select=*&active=eq.true&order=sort,id", bearer)
         val customers = remote.selectAll("customers", "select=*&active=eq.true&order=id", bearer)
@@ -373,6 +377,19 @@ class SyncEngine(
         }
         guard()
 
+        // The snapshot only vouches for the current campaign. A record of another campaign
+        // (closed before this phone saw it archived) or a route point is cleared when the
+        // server holds its UUID, so it is never counted on top of the server's balances.
+        val included = includedIds.toHashSet()
+        val recordEvidence = HashSet<String>()
+        val unvouched = recordsSent.filter { it.id !in included && (it.kind == "gps" || it.payload.str("trip_id") != tripId) }
+        for ((kind, ops) in unvouched.groupBy { it.kind }) {
+            for (ids in ops.map { it.id }.chunked(40)) {
+                remote.select(recordTables.getValue(kind), "select=id&id=in.(${ids.joinToString(",")})", bearer).mapNotNullTo(recordEvidence) { it.str("id") }
+            }
+        }
+        guard()
+
         // The current campaign may already be a different one (or absent). Fetch evidence
         // for every acknowledged closing by its original campaign.
         val closingEvidence = HashMap<String, JsonObject>()
@@ -412,12 +429,11 @@ class SyncEngine(
         guard()
         store.transaction {
             store.setCacheObject(userId, "ref", ref)
-            val included = includedIds.toHashSet()
             for (op in store.outboxFor(userId)) {
                 val uploaded = op.state == "acknowledged" && when (op.kind) {
                     "customer" -> true
                     in SIDE_KINDS -> op.id in sideEvidence
-                    else -> op.id in included
+                    else -> op.id in included || op.id in recordEvidence
                 }
                 val redundant = op.state == "reconciled" && closingEvidence.containsKey(op.id)
                 if (!uploaded && !redundant) continue

@@ -289,6 +289,40 @@ class SyncTest {
         assertEquals(1, engine.flushOutbox(OWNER).sent)
     }
 
+    @Test fun recordOfAClosedCampaignIsArchivedOnItsServerCopy() = runTest {
+        openTrip(server)
+        store.enqueue(OWNER, "sale", sale("s1"))
+        engine.flushOutbox(OWNER)
+        // The refresh after the upload was lost and the campaign closed meanwhile:
+        // the next snapshot is for no campaign and never lists s1.
+        server.table("trips").replaceAll { it.with("status" to JsonPrimitive("closed")) }
+        engine.fetchRef(OWNER)
+        assertNull(store.getOp("s1"))
+        assertNotNull(store.cacheObject(OWNER, "operation:s1"))
+    }
+
+    @Test fun recordOfAClosedCampaignStaysUntilTheServerHasIt() = runTest {
+        openTrip(server)
+        store.enqueue(OWNER, "sale", sale("s1"))
+        engine.flushOutbox(OWNER)
+        server.table("sales").clear() // acknowledged, yet the server shows no such row
+        server.table("trips").replaceAll { it.with("status" to JsonPrimitive("closed")) }
+        engine.fetchRef(OWNER)
+        assertEquals("acknowledged", store.getOp("s1")!!.state)
+    }
+
+    @Test fun routePointsAreArchivedOnceTheServerHasThem() = runTest {
+        openTrip(server)
+        val point = buildJsonObject {
+            put("id", "g1"); put("created_by", OWNER); put("trip_id", TRIP); put("truck_id", "t1")
+            put("lat", 14.53); put("lng", 49.12); put("recorded_at", "2026-11-14T08:01:00.000Z")
+        }
+        store.enqueue(OWNER, "gps", point)
+        engine.flushOutbox(OWNER)
+        engine.fetchRef(OWNER) // the open campaign's snapshot does not list route points
+        assertNull(store.getOp("g1"))
+    }
+
     @Test fun localCopyIsKeptUntilTheSnapshotIncludesIt() = runTest {
         openTrip(server)
         store.enqueue(OWNER, "sale", sale("s1"))
