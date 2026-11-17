@@ -92,10 +92,10 @@ class Api(private val store: SessionStore, private val http: OkHttpClient = defa
     /** A valid bearer for the current account; refreshes ordinary expiry transparently. */
     suspend fun token(): String {
         val s = session ?: throw ApiError(401, null, SESSION_EXPIRED)
-        if (s.expiresAt - System.currentTimeMillis() > 60_000) return s.accessToken
+        if (fresh(s)) return s.accessToken
         return refreshLock.withLock {
             val latest = session ?: throw ApiError(401, null, SESSION_EXPIRED)
-            if (latest.expiresAt - System.currentTimeMillis() > 60_000) return@withLock latest.accessToken
+            if (fresh(latest)) return@withLock latest.accessToken
             val body = buildJsonObject { put("refresh_token", latest.refreshToken) }
             val result = try {
                 call(Request.Builder().url("${Backend.URL}/auth/v1/token?grant_type=refresh_token").post(body.toString().toRequestBody(json)), null)
@@ -119,6 +119,17 @@ class Api(private val store: SessionStore, private val http: OkHttpClient = defa
             next.accessToken
         }
     }
+
+    /**
+     * The server rejected [bearer] (for example "JWT expired"): if it is still the current
+     * token, the next [token] call refreshes it instead of sending it again.
+     */
+    private fun expire(bearer: String) { rejectedToken = bearer }
+
+    /** Kept apart from [session] so this never races a refresh that is replacing the tokens. */
+    @Volatile private var rejectedToken: String? = null
+
+    private fun fresh(s: Session) = s.accessToken != rejectedToken && s.expiresAt - System.currentTimeMillis() > 60_000
 
     /** Server-validated check that the saved session is still accepted. */
     suspend fun verifyUser(): String? = authGet("/auth/v1/user", token()).str("id")
@@ -235,6 +246,7 @@ class Api(private val store: SessionStore, private val http: OkHttpClient = defa
         request.header("apikey", Backend.KEY)
         if (bearer != null) request.header("Authorization", "Bearer $bearer")
         http.newCall(request.build()).execute().use { response ->
+            if (response.code == 401 && bearer != null) expire(bearer)
             if (!response.isSuccessful) throw toError(response.code, response.body?.string() ?: "")
             read(response)
         }
@@ -251,11 +263,20 @@ class Api(private val store: SessionStore, private val http: OkHttpClient = defa
             return ApiError(status, code, message)
         }
 
-        /** Expiry (epoch millis) from the JWT payload; an unreadable token is treated as expired. */
-        fun jwtExpiry(token: String): Long = runCatching {
+        /**
+         * When to refresh (epoch millis on this phone's clock), measured from the moment the
+         * token was received. The token's lifetime (exp - iat) is used rather than exp itself,
+         * so a phone clock that is off does not make every call fail or every call refresh.
+         * An unreadable token is treated as expired.
+         */
+        fun jwtExpiry(token: String, now: Long = System.currentTimeMillis()): Long = runCatching {
             val payload = token.split('.')[1]
-            val text = String(Base64.decode(payload, Base64.URL_SAFE or Base64.NO_PADDING or Base64.NO_WRAP))
-            ((parseObject(text)["exp"] as JsonPrimitive).content.toLong()) * 1000
+            val claims = parseObject(String(Base64.decode(payload, Base64.URL_SAFE or Base64.NO_PADDING or Base64.NO_WRAP)))
+            localExpiry((claims["exp"] as JsonPrimitive).content.toLong(), (claims["iat"] as? JsonPrimitive)?.content?.toLongOrNull(), now)
         }.getOrDefault(0L)
+
+        /** [exp] and [iat] are JWT seconds; without a usable iat the server's exp is used as is. */
+        fun localExpiry(exp: Long, iat: Long?, now: Long): Long =
+            if (iat != null && exp > iat) now + (exp - iat) * 1000 else exp * 1000
     }
 }
