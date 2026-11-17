@@ -88,10 +88,20 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    override fun onStart() {
+        super.onStart()
+        TrackingService.visible = true
+    }
+
     override fun onResume() {
         super.onResume()
         // The tracking service may only be started while the app is visible.
         TrackingService.update(this, repo)
+    }
+
+    override fun onStop() {
+        TrackingService.visible = false
+        super.onStop()
     }
 }
 

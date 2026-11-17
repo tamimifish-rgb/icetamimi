@@ -43,15 +43,22 @@ class TrackingService : Service(), LocationListener {
 
     @SuppressLint("MissingPermission")
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        val nextOwner = intent?.getStringExtra(OWNER)
-        val nextTrip = intent?.getStringExtra(TRIP)
-        if (nextOwner == null || nextTrip == null || !Locations.granted(this)) { stopSelf(); return START_NOT_STICKY }
-        val changed = nextOwner != owner || nextTrip != trip
-        owner = nextOwner; trip = nextTrip; truck = intent.getStringExtra(TRUCK)
+        // Started with startForegroundService: Android kills the app if the service stops
+        // before calling startForeground, so that always comes first, even when it then stops.
         try {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) startForeground(NOTIFICATION, notification(), ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION)
             else startForeground(NOTIFICATION, notification())
-        } catch (e: Exception) { stopSelf(); return START_NOT_STICKY }
+        } catch (e: Exception) {
+            // Refused (location permission withdrawn, or not allowed from the background).
+            stopSelf(); return START_NOT_STICKY
+        }
+        val nextOwner = intent?.getStringExtra(OWNER)
+        val nextTrip = intent?.getStringExtra(TRIP)
+        if (nextOwner == null || nextTrip == null || !Locations.granted(this)) {
+            stopForeground(STOP_FOREGROUND_REMOVE); stopSelf(); return START_NOT_STICKY
+        }
+        val changed = nextOwner != owner || nextTrip != trip
+        owner = nextOwner; trip = nextTrip; truck = intent.getStringExtra(TRUCK)
         if (changed) {
             last = repo.store.getCache("$nextOwner:tracking:$nextTrip")?.toLongOrNull() ?: 0L
             val manager = getSystemService(Context.LOCATION_SERVICE) as LocationManager
@@ -126,6 +133,13 @@ class TrackingService : Service(), LocationListener {
         private var startedFor: String? = null
 
         /**
+         * True while the app is on screen (MainActivity onStart to onStop). A location service
+         * started from the background gets no locations (Android 11) or is refused (12+), so
+         * the background sync may stop tracking but only a visible app starts it.
+         */
+        @Volatile var visible = false
+
+        /**
          * Tracks only a distributor's own open campaign that has no closing sent; stops
          * for every other state (sign-out, closing, campaign closed, another role).
          */
@@ -143,6 +157,7 @@ class TrackingService : Service(), LocationListener {
             }
             val key = "${me!!.id}:${snapshot.tripId}"
             if (running && startedFor == key) return
+            if (!visible) return
             val intent = Intent(context, TrackingService::class.java)
                 .putExtra(OWNER, me.id).putExtra(TRIP, snapshot.tripId).putExtra(TRUCK, trip?.get("truck_id")?.let { (it as? kotlinx.serialization.json.JsonPrimitive)?.content })
             // Android only allows starting a location service while the app is visible.
