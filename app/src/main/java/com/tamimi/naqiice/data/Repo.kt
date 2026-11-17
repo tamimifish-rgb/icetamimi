@@ -11,6 +11,7 @@ import com.tamimi.naqiice.core.parseObject
 import com.tamimi.naqiice.core.str
 import com.tamimi.naqiice.core.strings
 import kotlinx.coroutines.CoroutineScope
+import kotlin.coroutines.cancellation.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
@@ -130,7 +131,9 @@ class Repo(private val context: Context, private val httpClient: okhttp3.OkHttpC
         generation++
         me.value = null
         trackingController?.invoke(this)
-        api.signOut()
+        // The server-side logout runs in the app's scope: the screen that asked for the
+        // sign-out goes away with the account and must not cancel it.
+        api.signOutLocally()?.let { ended -> scope.launch { api.revoke(ended) } }
         applySession()
     }
 
@@ -240,6 +243,8 @@ class Repo(private val context: Context, private val httpClient: okhttp3.OkHttpC
                 lastError.value = if (result.failed > 0) "تعذّر رفع بعض السجلات؛ افتح حالة المزامنة للمراجعة" else null
                 refreshExtras(user, version)
             }
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             if (generation == version) lastError.value = e.userMessage("تعذّرت المزامنة")
         } finally {

@@ -16,6 +16,7 @@ import com.tamimi.naqiice.core.strings
 import com.tamimi.naqiice.core.with
 import com.tamimi.naqiice.core.without
 import kotlinx.coroutines.sync.Mutex
+import kotlin.coroutines.cancellation.CancellationException
 import kotlinx.coroutines.sync.withLock
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
@@ -61,7 +62,11 @@ private fun validMoney(e: JsonElement?): Boolean {
 }
 
 /** Only the RPC inputs identify a revision; expected cash/difference are server-derived. */
-fun compatibleClosing(op: OutboxOp, closing: Row?, trip: Row?, allowRedundant: Boolean = false): Boolean {
+/**
+ * `allowFlagged`: an upload already acknowledged that the supervisor has since sent back still
+ * proves the submission landed. Never used before uploading, so a resubmission is always sent.
+ */
+fun compatibleClosing(op: OutboxOp, closing: Row?, trip: Row?, allowRedundant: Boolean = false, allowFlagged: Boolean = false): Boolean {
     val p = op.payload
     val tripId = p.str("trip_id")
     return op.kind == "closing" && p.str("id") == op.id && p.str("created_by") == op.ownerId &&
@@ -69,7 +74,7 @@ fun compatibleClosing(op: OutboxOp, closing: Row?, trip: Row?, allowRedundant: B
         (trip.str("status") == "open" || trip.str("status") == "closed") &&
         closing?.str("id") != null && (allowRedundant || closing.str("id") == op.id) &&
         closing.str("trip_id") == tripId && closing.str("created_by") == op.ownerId &&
-        ((closing.str("status") == "submitted" && trip.str("status") == "open") || closing.str("status") == "approved") &&
+        (((closing.str("status") == "submitted" || (allowFlagged && closing.str("status") == "flagged")) && trip.str("status") == "open") || closing.str("status") == "approved") &&
         validMoney(p["counted_cash"]) && validMoney(closing["counted_cash"]) && closing.num("counted_cash") == p.num("counted_cash") &&
         closing.str("notes") == p.str("notes")
 }
@@ -136,6 +141,9 @@ class SyncEngine(
         "freezer_event" to "freezer_events", "gps" to "gps_points", "closing" to "closings", "customer" to "customers",
     )
 
+    /** Where an uploaded record's own row is, for records cleared by their UUID. */
+    private val recordTables = tables - "closing" - "customer" + ("sale" to "sales")
+
     private fun assertOwner(ownerId: String, message: String = "تغير الحساب") {
         if (remote.currentUserId() != ownerId) throw IllegalStateException(message)
     }
@@ -157,7 +165,7 @@ class SyncEngine(
             }
             if (read() != null) return null
             // Plain insert, no ON CONFLICT or RETURNING: directory policies cannot see a new UUID yet.
-            val failure = try { remote.insert("customers", payload, bearer); null } catch (e: Exception) { e }
+            val failure = try { remote.insert("customers", payload, bearer); null } catch (e: CancellationException) { throw e } catch (e: Exception) { e }
             assertOwner(op.ownerId)
             if (failure == null) return null
             // Lost responses / concurrent duplicates require independent, owner-bound evidence.
@@ -263,10 +271,14 @@ class SyncEngine(
                             store.putOp(op.copy(state = "review", lastError = e.message))
                             failed++
                             continue
+                        } catch (e: CancellationException) {
+                            throw e
                         } catch (_: Exception) { /* falls through to blocked */ }
                     }
                     store.putOp(op.copy(lastError = "توجد سجلات مرتبطة لم تُرفع بعد؛ راجع الأخطاء أولاً", state = "blocked"))
                     if (op.kind == "sale") blockedSales.add(op.id)
+                    // A skipped campaign record holds its closing back exactly like a failed one.
+                    if (op.kind !in SIDE_KINDS) op.payload.str("trip_id")?.let { blockedTrips.add(it) }
                     failed++
                     continue
                 }
@@ -275,6 +287,9 @@ class SyncEngine(
                     // Keep the sole local copy until the durable snapshot acknowledges the UUID.
                     store.putOp(op.copy(state = if (evidence != null) "reconciled" else "acknowledged", reconciliation = evidence, lastError = null))
                     if (evidence == null) sent++
+                } catch (e: CancellationException) {
+                    // A cancelled sync is not a failed upload: the record stays as it was and is retried.
+                    throw e
                 } catch (e: Exception) {
                     failed++
                     store.putOp(op.copy(state = if (e is ClosedClosingReview) "review" else "blocked", attempts = op.attempts + 1, lastError = e.userMessage("تعذّر الرفع")))
@@ -313,6 +328,7 @@ class SyncEngine(
         guard()
         // Listed before any read: whatever these uploads changed is in the rows fetched below.
         val sideSent = store.outboxFor(userId).filter { it.kind in SIDE_KINDS && it.state == "acknowledged" }
+        val recordsSent = store.outboxFor(userId).filter { it.kind in recordTables && it.state == "acknowledged" }
         val variants = remote.selectAll("product_variants", "select=*,products(name,active,sort)&active=eq.true&order=sort,id", bearer)
         val regions = remote.selectAll("regions", "select=*&active=eq.true&order=sort,id", bearer)
         val customers = remote.selectAll("customers", "select=*&active=eq.true&order=id", bearer)
@@ -361,6 +377,19 @@ class SyncEngine(
         }
         guard()
 
+        // The snapshot only vouches for the current campaign. A record of another campaign
+        // (closed before this phone saw it archived) or a route point is cleared when the
+        // server holds its UUID, so it is never counted on top of the server's balances.
+        val included = includedIds.toHashSet()
+        val recordEvidence = HashSet<String>()
+        val unvouched = recordsSent.filter { it.id !in included && (it.kind == "gps" || it.payload.str("trip_id") != tripId) }
+        for ((kind, ops) in unvouched.groupBy { it.kind }) {
+            for (ids in ops.map { it.id }.chunked(40)) {
+                remote.select(recordTables.getValue(kind), "select=id&id=in.(${ids.joinToString(",")})", bearer).mapNotNullTo(recordEvidence) { it.str("id") }
+            }
+        }
+        guard()
+
         // The current campaign may already be a different one (or absent). Fetch evidence
         // for every acknowledged closing by its original campaign.
         val closingEvidence = HashMap<String, JsonObject>()
@@ -369,7 +398,7 @@ class SyncEngine(
             val c = remote.select("closings", "select=*&trip_id=eq.$t&limit=1", bearer).firstOrNull()
             val tr = remote.select("trips", "select=*&id=eq.$t&limit=1", bearer).firstOrNull()
             guard()
-            if (compatibleClosing(op, c, tr, op.state == "reconciled")) closingEvidence[op.id] = buildJsonObject { put("closing", c ?: JsonNull); put("trip", tr ?: JsonNull) }
+            if (compatibleClosing(op, c, tr, op.state == "reconciled", op.state == "acknowledged")) closingEvidence[op.id] = buildJsonObject { put("closing", c ?: JsonNull); put("trip", tr ?: JsonNull) }
         }
 
         fun deposit(kind: String, id: String?) = deposits.firstOrNull { it.str("kind") == kind && it.str("id") == id }
@@ -400,19 +429,18 @@ class SyncEngine(
         guard()
         store.transaction {
             store.setCacheObject(userId, "ref", ref)
-            val included = includedIds.toHashSet()
             for (op in store.outboxFor(userId)) {
                 val uploaded = op.state == "acknowledged" && when (op.kind) {
                     "customer" -> true
                     in SIDE_KINDS -> op.id in sideEvidence
-                    else -> op.id in included
+                    else -> op.id in included || op.id in recordEvidence
                 }
                 val redundant = op.state == "reconciled" && closingEvidence.containsKey(op.id)
                 if (!uploaded && !redundant) continue
                 if (op.kind == "customer" && !compatibleCustomer(op, customers.firstOrNull { it.str("id") == op.id })) continue
                 // Closings include revisions; only prune when the submitted values are visible.
                 val evidence = closingEvidence[op.id]
-                if (op.kind == "closing" && !compatibleClosing(op, evidence?.obj("closing"), evidence?.obj("trip"), op.state == "reconciled")) continue
+                if (op.kind == "closing" && !compatibleClosing(op, evidence?.obj("closing"), evidence?.obj("trip"), op.state == "reconciled", op.state == "acknowledged")) continue
                 // Archive the full local record in the same transaction before removing it.
                 store.putCache("$userId:operation:${op.id}", archive(op, evidence).toString())
                 store.deleteOp(op.id)
