@@ -227,6 +227,22 @@ class SyncTest {
         assertTrue(store.outboxFor(OWNER).all { it.state == "blocked" })
     }
 
+    @Test fun closingWaitsForASaleHeldBackByItsNewCustomer() = runTest {
+        openTrip(server)
+        server.failCustomerInsert = true
+        store.enqueue(OWNER, "customer", customer("new1"))
+        store.enqueue(OWNER, "sale", sale("s1", customer = "new1"))
+        store.enqueue(OWNER, "closing", closing("k1"))
+        engine.flushOutbox(OWNER)
+        assertFalse(server.calls.contains("rpc:save_invoice"))
+        assertFalse(server.calls.contains("rpc:submit_closing"))
+        assertEquals("blocked", store.getOp("k1")!!.state)
+        // Once the customer goes through, the sale and then the closing follow in order.
+        server.failCustomerInsert = false
+        assertEquals(3, engine.flushOutbox(OWNER).sent)
+        assertTrue(server.calls.indexOf("rpc:save_invoice") < server.calls.indexOf("rpc:submit_closing"))
+    }
+
     @Test fun localCopyIsKeptUntilTheSnapshotIncludesIt() = runTest {
         openTrip(server)
         store.enqueue(OWNER, "sale", sale("s1"))

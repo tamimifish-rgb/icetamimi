@@ -267,6 +267,8 @@ class SyncEngine(
                     }
                     store.putOp(op.copy(lastError = "توجد سجلات مرتبطة لم تُرفع بعد؛ راجع الأخطاء أولاً", state = "blocked"))
                     if (op.kind == "sale") blockedSales.add(op.id)
+                    // A skipped campaign record holds its closing back exactly like a failed one.
+                    if (op.kind !in SIDE_KINDS) op.payload.str("trip_id")?.let { blockedTrips.add(it) }
                     failed++
                     continue
                 }
