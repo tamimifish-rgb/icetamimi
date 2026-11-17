@@ -24,18 +24,19 @@ import java.util.Base64
 class SessionTest {
     private val nowSec = System.currentTimeMillis() / 1000
 
-    /** A token issued [skewSec] away from this phone's clock, valid for one hour. */
-    private fun jwt(name: String, skewSec: Long): String {
+    /** A token issued [skewSec] away from this phone's clock, valid for [lifeSec]. */
+    private fun jwt(name: String, skewSec: Long, lifeSec: Long = 3600): String {
         val iat = nowSec + skewSec
         val enc = Base64.getUrlEncoder().withoutPadding()
         val header = enc.encodeToString("""{"alg":"HS256"}""".toByteArray())
-        val payload = enc.encodeToString("""{"sub":"u1","iat":$iat,"exp":${iat + 3600},"n":"$name"}""".toByteArray())
+        val payload = enc.encodeToString("""{"sub":"u1","iat":$iat,"exp":${iat + lifeSec},"n":"$name"}""".toByteArray())
         return "$header.$payload.sig"
     }
 
     private class Server(val nextAccess: () -> String) {
         val refreshes = ArrayList<String>()
         val rejected = HashSet<String>()
+        val logouts = ArrayList<String>()
         val client: OkHttpClient = OkHttpClient.Builder().addInterceptor { chain ->
             val request = chain.request()
             val bearer = request.header("Authorization")?.removePrefix("Bearer ")
@@ -48,6 +49,7 @@ class SessionTest {
                     reply(request, 200, """{"access_token":"$token","refresh_token":"r${refreshes.size}","user":{"id":"u1"}}""")
                 }
                 bearer in rejected -> reply(request, 401, """{"code":"PGRST301","message":"JWT expired"}""")
+                path == "/auth/v1/logout" -> { logouts.add(bearer!!); reply(request, 200, "{}") }
                 else -> reply(request, 200, "[]")
             }
         }.build()
@@ -95,5 +97,38 @@ class SessionTest {
         assertThrows(ApiError::class.java) { kotlinx.coroutines.runBlocking { api.select("trips", "select=*", first) } }
         assertEquals(second, api.token())
         assertEquals(1, server.refreshes.size)
+    }
+
+    @Test fun signOutAfterExpiryStillEndsTheServerSession() = runTest {
+        var n = 0
+        val server = Server { jwt("b${++n}", skewSec = 0) }
+        val api = Api(Memory(), server.client)
+        api.setSession(jwt("a", skewSec = 0, lifeSec = 30), "r0") // inside the refresh margin: treated as expired
+        api.signOut()
+        assertEquals(1, server.refreshes.size)
+        assertEquals(server.refreshes, server.logouts) // logged out with the fresh token
+        assertEquals(null, api.currentSession())
+    }
+
+    @Test fun signOutWithARejectedTokenRetriesWithAFreshOne() = runTest {
+        var n = 0
+        val server = Server { jwt("b${++n}", skewSec = 0) }
+        val api = Api(Memory(), server.client)
+        val first = jwt("a", skewSec = 0)
+        api.setSession(first, "r0")
+        server.rejected.add(first) // looks valid here, but the server already refuses it
+        api.signOut()
+        assertEquals(server.refreshes, server.logouts)
+        assertEquals(1, server.logouts.size)
+    }
+
+    @Test fun signOutWithAValidTokenNeedsNoRefresh() = runTest {
+        val server = Server { error("no refresh expected") }
+        val api = Api(Memory(), server.client)
+        val first = jwt("a", skewSec = 0)
+        api.setSession(first, "r0")
+        api.signOut()
+        assertEquals(listOf(first), server.logouts)
+        assertEquals(0, server.refreshes.size)
     }
 }

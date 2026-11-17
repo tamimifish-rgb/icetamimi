@@ -131,7 +131,9 @@ class Repo(private val context: Context, private val httpClient: okhttp3.OkHttpC
         generation++
         me.value = null
         trackingController?.invoke(this)
-        api.signOut()
+        // The server-side logout runs in the app's scope: the screen that asked for the
+        // sign-out goes away with the account and must not cancel it.
+        api.signOutLocally()?.let { ended -> scope.launch { api.revoke(ended) } }
         applySession()
     }
 

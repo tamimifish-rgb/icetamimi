@@ -1,5 +1,6 @@
 package com.tamimi.naqiice.data
 
+import kotlin.coroutines.cancellation.CancellationException
 import android.util.Base64
 import com.tamimi.naqiice.core.JSON
 import com.tamimi.naqiice.core.Row
@@ -134,13 +135,35 @@ class Api(private val store: SessionStore, private val http: OkHttpClient = defa
     /** Server-validated check that the saved session is still accepted. */
     suspend fun verifyUser(): String? = authGet("/auth/v1/user", token()).str("id")
 
-    suspend fun signOut() {
+    suspend fun signOut() { signOutLocally()?.let { revoke(it) } }
+
+    /** Forgets the session on this phone at once; returns it so [revoke] can end it on the server. */
+    fun signOutLocally(): Session? {
         val s = session
         session = null
         store.save(null)
         onOwnerChanged?.invoke(null)
-        if (s != null) runCatching {
-            call(Request.Builder().url("${Backend.URL}/auth/v1/logout").post("{}".toRequestBody(json)), s.accessToken)
+        return s
+    }
+
+    /**
+     * Ends [ended] on the server too. Auth only accepts a logout with a valid access token, so
+     * an expired or rejected one is first exchanged with the refresh token; otherwise a phone
+     * idle for an hour would sign out locally while its refresh token stayed usable. Best
+     * effort: offline or refused, the phone is signed out regardless.
+     */
+    suspend fun revoke(ended: Session) {
+        suspend fun logout(bearer: String) = call(Request.Builder().url("${Backend.URL}/auth/v1/logout").post("{}".toRequestBody(json)), bearer)
+        try {
+            if (fresh(ended)) {
+                try { logout(ended.accessToken); return } catch (e: ApiError) { if (e.status != 401 && e.status != 403) return }
+            }
+            val body = buildJsonObject { put("refresh_token", ended.refreshToken) }
+            val refreshed = parseObject(call(Request.Builder().url("${Backend.URL}/auth/v1/token?grant_type=refresh_token").post(body.toString().toRequestBody(json)), null))
+            logout(refreshed.str("access_token") ?: return)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (_: Exception) {
         }
     }
 
