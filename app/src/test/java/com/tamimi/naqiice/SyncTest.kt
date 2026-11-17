@@ -45,6 +45,7 @@ private class FakeServer : Remote {
     val calls = ArrayList<String>()
     val uploads = ArrayList<String>()
     var failInvoice: String? = null
+    var cancelInvoice = false
     var failCustomerInsert = false
     var included: List<String> = emptyList()
     var onSelect: (() -> Unit)? = null
@@ -91,6 +92,7 @@ private class FakeServer : Remote {
             "save_invoice" -> {
                 val invoice = args["p_invoice"] as JsonObject
                 failInvoice?.let { throw ApiError(400, "P0001", it) }
+                if (cancelInvoice) throw kotlin.coroutines.cancellation.CancellationException("Job was cancelled")
                 if (table("sales").none { it.str("id") == invoice.str("id") }) table("sales").add(invoice)
                 return invoice
             }
@@ -241,6 +243,50 @@ class SyncTest {
         server.failCustomerInsert = false
         assertEquals(3, engine.flushOutbox(OWNER).sent)
         assertTrue(server.calls.indexOf("rpc:save_invoice") < server.calls.indexOf("rpc:submit_closing"))
+    }
+
+    @Test fun flaggedClosingIsArchivedSoTheCorrectionCanBeSent() = runTest {
+        openTrip(server)
+        store.enqueue(OWNER, "closing", closing("k1"))
+        engine.flushOutbox(OWNER)
+        assertEquals("acknowledged", store.getOp("k1")!!.state)
+        // The refresh after the upload was lost; the supervisor sends the closing back meanwhile.
+        server.table("closings").replaceAll { it.with("status" to JsonPrimitive("flagged")) }
+        server.included = listOf("k1")
+        engine.fetchRef(OWNER)
+        assertNull(store.getOp("k1"))
+        assertNotNull(store.cacheObject(OWNER, "operation:k1"))
+        // The distributor's correction goes out under the same closing id.
+        store.enqueue(OWNER, "closing", closing("k1", counted = 8500))
+        assertEquals(1, engine.flushOutbox(OWNER).sent)
+        assertEquals(2, server.calls.count { it == "rpc:submit_closing" })
+    }
+
+    @Test fun flaggedClosingIsResubmittedEvenWithTheSameValues() = runTest {
+        openTrip(server)
+        server.table("closings").add(buildJsonObject {
+            put("id", "k1"); put("trip_id", TRIP); put("created_by", OWNER); put("status", "flagged"); put("counted_cash", 9000); put("notes", JsonNull)
+        })
+        store.enqueue(OWNER, "closing", closing("k1"))
+        engine.flushOutbox(OWNER)
+        assertEquals(1, server.calls.count { it == "rpc:submit_closing" })
+    }
+
+    @Test fun cancelledSyncLeavesRecordsQueued() = runTest {
+        openTrip(server)
+        server.cancelInvoice = true
+        store.enqueue(OWNER, "sale", sale("s1"))
+        val before = store.getOp("s1")!!
+        var cancelled = false
+        try { engine.flushOutbox(OWNER) } catch (_: kotlin.coroutines.cancellation.CancellationException) { cancelled = true }
+        assertTrue(cancelled)
+        val after = store.getOp("s1")!!
+        assertEquals(before.state, after.state)
+        assertEquals(0, after.attempts)
+        assertNull(after.lastError)
+        // The lock is released: the next sync uploads it.
+        server.cancelInvoice = false
+        assertEquals(1, engine.flushOutbox(OWNER).sent)
     }
 
     @Test fun localCopyIsKeptUntilTheSnapshotIncludesIt() = runTest {
