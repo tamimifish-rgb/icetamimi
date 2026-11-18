@@ -53,13 +53,28 @@ Or open the folder in Android Studio and run the `app` configuration.
 ### Release and updating the installed app
 
 The package is `com.tamimi.naqiice`, the same as the earlier builds, with
-`versionCode 211` (3.1.1). To install it **over** the existing app it must be signed with the
-same owner keystore (Android Studio → Build → Generate Signed App Bundle / APK). Keep
-the keystore and its passwords outside this repository.
+`versionCode 211` (3.1.1). An update installs **over** the existing app only when it is signed
+with the same key. Since 3.1.1 that is the key created on 2026-11-18 (`pureice-release.jks`,
+alias `pureice`, certificate SHA-256 `0f7235a3…eef6a26e`). Keep the key file and its password
+outside this repository; the owner holds them.
 
-Before updating a phone: open the old app while online and let it finish syncing.
-Records still waiting inside the old web-based app are stored by the browser/WebView
-and are **not** carried over into this app. Employees sign in again after the update.
+The key used for 3.1.0 and earlier is lost, so moving a phone to 3.1.1 means uninstalling the
+old app once: first open it online and let everything sync (anything still waiting on the
+phone is deleted with it), then install 3.1.1 and sign in again. Later versions install over
+3.1.1 as normal updates.
+
+#### Releasing from a phone (GitHub Actions)
+
+`.github/workflows/release-apk.yml` runs the unit tests, builds the release APK, signs it, checks
+that the signing certificate is the one above, and attaches `pureice-<version>-<code>.apk` to a
+**draft** release (visible only to people with write access; the repository is public).
+
+1. Raise `versionCode` (and `versionName`) in `app/build.gradle.kts`.
+2. GitHub app or github.com → **Actions** → **Release APK** → **Run workflow**.
+3. When it finishes, open **Releases**, then the draft, and download the APK.
+
+It needs two repository secrets (Settings → Secrets and variables → Actions):
+`SIGNING_KEYSTORE_BASE64` (the key file, base64-encoded) and `SIGNING_KEYSTORE_PASSWORD`.
 
 ## Project layout
 

@@ -1,0 +1,122 @@
+# Builds, tests and signs the release APK, then attaches it to a draft GitHub release.
+#
+# Start it from a phone: GitHub app or github.com → Actions → "Release APK" → Run workflow.
+# The APK version is the one in app/build.gradle.kts: raise versionCode before each release.
+#
+# Needs two repository secrets (Settings → Secrets and variables → Actions):
+#   SIGNING_KEYSTORE_BASE64    the signing key file (pureice-release.jks), base64-encoded
+#   SIGNING_KEYSTORE_PASSWORD  its password (the key inside uses the same password)
+#
+# The repository is public: the APK goes to a draft release, which only people with write
+# access can see, and the key stays in the secrets. Workflows run from forks get no secrets.
+name: Release APK
+
+on:
+  workflow_dispatch:
+    inputs:
+      run_tests:
+        description: Run the unit tests before building
+        type: boolean
+        default: true
+
+permissions:
+  contents: write # create the draft release
+
+concurrency:
+  group: release-apk
+  cancel-in-progress: false
+
+env:
+  # SHA-256 of the signing certificate every installed copy has (key created 2026-11-18).
+  # A build signed with any other key could not update the phones, so the run stops.
+  EXPECTED_CERT_SHA256: 0f7235a3c9ee099ba5d9ebdce7a2efbd54ef3956688e112709346245eef6a26e
+
+jobs:
+  release:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - name: Check the signing secrets
+        env:
+          SIGNING_KEYSTORE_BASE64: ${{ secrets.SIGNING_KEYSTORE_BASE64 }}
+          SIGNING_KEYSTORE_PASSWORD: ${{ secrets.SIGNING_KEYSTORE_PASSWORD }}
+        run: |
+          missing=""
+          [ -n "$SIGNING_KEYSTORE_BASE64" ] || missing="$missing SIGNING_KEYSTORE_BASE64"
+          [ -n "$SIGNING_KEYSTORE_PASSWORD" ] || missing="$missing SIGNING_KEYSTORE_PASSWORD"
+          if [ -n "$missing" ]; then
+            echo "::error::Missing repository secret(s):$missing. Add them under Settings → Secrets and variables → Actions."
+            exit 1
+          fi
+
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Android SDK 35
+        run: yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platforms;android-35" "build-tools;35.0.0" > /dev/null
+
+      - name: Read the version
+        run: |
+          code=$(grep -oP 'versionCode = \K[0-9]+' app/build.gradle.kts)
+          name=$(grep -oP 'versionName = "\K[^"]+' app/build.gradle.kts)
+          [ -n "$code" ] && [ -n "$name" ] || { echo "::error::Could not read versionCode/versionName from app/build.gradle.kts"; exit 1; }
+          echo "VERSION_CODE=$code" >> "$GITHUB_ENV"
+          echo "VERSION_NAME=$name" >> "$GITHUB_ENV"
+          echo "APK=pureice-$name-$code.apk" >> "$GITHUB_ENV"
+
+      - name: Unit tests
+        if: ${{ inputs.run_tests }}
+        run: ./gradlew :app:testDebugUnitTest --console=plain --stacktrace
+
+      - name: Build the release APK
+        run: ./gradlew :app:assembleRelease --console=plain --stacktrace
+
+      - name: Sign and verify
+        env:
+          SIGNING_KEYSTORE_BASE64: ${{ secrets.SIGNING_KEYSTORE_BASE64 }}
+          SIGNING_KEYSTORE_PASSWORD: ${{ secrets.SIGNING_KEYSTORE_PASSWORD }}
+        run: |
+          set -euo pipefail
+          keystore="$RUNNER_TEMP/release.jks"
+          trap 'rm -f "$keystore"' EXIT
+          # Tolerates line breaks and spaces picked up when the secret was pasted.
+          printf '%s' "$SIGNING_KEYSTORE_BASE64" | tr -d ' \r\n\t' | base64 -d > "$keystore"
+          bt="$ANDROID_HOME/build-tools/35.0.0"
+          "$bt/apksigner" sign --ks "$keystore" --ks-key-alias pureice \
+            --ks-pass env:SIGNING_KEYSTORE_PASSWORD --key-pass env:SIGNING_KEYSTORE_PASSWORD \
+            --out "$APK" app/build/outputs/apk/release/app-release-unsigned.apk
+          rm -f "$APK.idsig"
+          "$bt/apksigner" verify "$APK"
+          actual=$("$bt/apksigner" verify --print-certs "$APK" | grep -oP 'Signer #1 certificate SHA-256 digest: \K[0-9a-f]+')
+          expected=$(printf '%s' "$EXPECTED_CERT_SHA256" | tr -d ' :' | tr 'A-F' 'a-f')
+          if [ "$actual" != "$expected" ]; then
+            echo "::error::Signed with certificate $actual, but the phones have $expected. Check SIGNING_KEYSTORE_BASE64."
+            exit 1
+          fi
+          "$bt/aapt2" dump badging "$APK" | head -1
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pureice-${{ env.VERSION_NAME }}-${{ env.VERSION_CODE }}
+          path: ${{ env.APK }}
+          retention-days: 30
+          if-no-files-found: error
+
+      - name: Draft release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          tag="v$VERSION_NAME-$VERSION_CODE-build$GITHUB_RUN_NUMBER"
+          gh release create "$tag" "$APK" --draft --target "$GITHUB_SHA" \
+            --title "Pure Ice $VERSION_NAME ($VERSION_CODE)" \
+            --notes "Signed APK built from $GITHUB_SHA by run $GITHUB_RUN_NUMBER. Draft: visible only to people with write access."
+          {
+            echo "## Pure Ice $VERSION_NAME ($VERSION_CODE)"
+            echo
+            echo "Signed APK: open **Releases**, then the draft **Pure Ice $VERSION_NAME ($VERSION_CODE)**, and download \`$APK\`."
+            echo "It is also attached to this run as an artifact for 30 days."
+          } >> "$GITHUB_STEP_SUMMARY"
