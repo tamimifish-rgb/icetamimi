@@ -15,8 +15,8 @@ android {
         applicationId = "com.tamimi.naqiice"
         minSdk = 24
         targetSdk = 35
-        versionCode = 210
-        versionName = "3.1.0"
+        versionCode = 211
+        versionName = "3.1.1"
     }
 
     buildTypes {
