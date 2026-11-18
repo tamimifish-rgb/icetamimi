@@ -219,6 +219,28 @@ class SyncTest {
         assertEquals(2, engine.flushOutbox(OWNER).sent)
     }
 
+    /** The live database prints doubles with 15 significant digits (extra_float_digits = 0). */
+    @Test fun newCustomerWithAPreciseLocationIsConfirmed() = runTest {
+        openTrip(server)
+        store.enqueue(OWNER, "customer", customer("new1").with("lat" to JsonPrimitive(14.485588333333332), "lng" to JsonPrimitive(49.12148166666667)))
+        engine.flushOutbox(OWNER)
+        assertEquals("acknowledged", store.getOp("new1")!!.state)
+        // What the server sends back: the same position, printed to 15 significant digits.
+        server.table("customers").replaceAll { it.with("lat" to JsonPrimitive(14.4855883333333), "lng" to JsonPrimitive(49.1214816666667)) }
+        engine.fetchRef(OWNER)
+        assertNull(store.getOp("new1"))
+        assertNotNull(store.cacheObject(OWNER, "operation:new1"))
+    }
+
+    @Test fun newCustomerAtAnotherLocationIsNotConfirmed() = runTest {
+        openTrip(server)
+        store.enqueue(OWNER, "customer", customer("new1").with("lat" to JsonPrimitive(14.485588333333332), "lng" to JsonPrimitive(49.12148166666667)))
+        engine.flushOutbox(OWNER)
+        server.table("customers").replaceAll { it.with("lat" to JsonPrimitive(14.4855893333333)) } // 1e-6 degrees, about 11 cm away
+        engine.fetchRef(OWNER)
+        assertEquals("acknowledged", store.getOp("new1")!!.state)
+    }
+
     @Test fun saleWaitsForItsNewCustomer() = runTest {
         openTrip(server)
         server.failCustomerInsert = true

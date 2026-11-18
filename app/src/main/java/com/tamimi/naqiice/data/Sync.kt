@@ -101,9 +101,18 @@ fun compatibleCustomer(op: OutboxOp, row: Row?): Boolean {
         val actual = row[key].orNull()
         val submitted = value.orNull()
         when (key) {
-            "credit_limit", "lat", "lng" ->
+            "credit_limit" ->
                 if (submitted == null) actual == null
                 else actual != null && (submitted as? JsonPrimitive)?.doubleOrNull != null && (submitted as JsonPrimitive).doubleOrNull == row.numOrNull(key)
+            // The database prints doubles with 15 significant digits (extra_float_digits = 0), so a
+            // GPS fix such as 14.485588333333332 comes back as 14.4855883333333. Within 1e-9 degrees
+            // (about 0.1 mm) is the same position; an exact comparison never matched again.
+            "lat", "lng" -> {
+                val sent = (submitted as? JsonPrimitive)?.doubleOrNull
+                val stored = row.numOrNull(key)
+                if (submitted == null) actual == null
+                else sent != null && stored != null && kotlin.math.abs(sent - stored) <= 1e-9
+            }
             "created_at", "updated_at" -> parseIso((submitted as? JsonPrimitive)?.contentOrNull) != null &&
                 parseIso((submitted as? JsonPrimitive)?.contentOrNull) == parseIso((actual as? JsonPrimitive)?.contentOrNull)
             else -> submitted == actual

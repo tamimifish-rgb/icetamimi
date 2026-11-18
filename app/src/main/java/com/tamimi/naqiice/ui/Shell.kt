@@ -352,7 +352,8 @@ private fun SyncDialog(pending: List<OutboxOp>, online: Boolean, syncing: Boolea
     var confirmAside by remember { mutableStateOf<OutboxOp?>(null) }
     WebDialog("حالة المزامنة", close) {
         lastError?.let { Text(it, style = T.sm.color(Ice.destructive)) }
-        Btn({ scope.launch { repo.syncNow() } }, Modifier.fillMaxWidth(), enabled = !syncing && online) {
+        // In the app's scope: closing this dialog must not cut the sync short.
+        Btn({ repo.scope.launch { repo.syncNow() } }, Modifier.fillMaxWidth(), enabled = !syncing && online) {
             Icon(Lucide.RefreshCw, null, Modifier.size(16.dp))
             Text("مزامنة الآن")
         }
@@ -379,7 +380,7 @@ private fun SyncDialog(pending: List<OutboxOp>, online: Boolean, syncing: Boolea
                     Text(op.payload.str("invoice_no") ?: op.id, Modifier.fillMaxWidth(), style = T.xs.muted.ltr, textAlign = TextAlign.Left)
                     op.lastError?.let { Text(it, style = T.sm.color(Ice.destructive)) }
                     if (op.lastError != null && op.state != "review" && op.state != "set_aside") {
-                        Btn("إعادة المحاولة", { scope.launch { repo.retry(op) } }, variant = Variant.Outline, enabled = !syncing && online, height = 44.dp)
+                        Btn("إعادة المحاولة", { repo.scope.launch { repo.retry(op) } }, variant = Variant.Outline, enabled = !syncing && online, height = 44.dp)
                     }
                     if (op.canSetAside()) Btn("تنحية هذا الطلب مع الاحتفاظ به", { confirmAside = op }, variant = Variant.Outline, enabled = !syncing)
                     if (op.state in listOf("review", "set_aside", "reconciled")) {
