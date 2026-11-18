@@ -53,15 +53,15 @@ Or open the folder in Android Studio and run the `app` configuration.
 ### Release and updating the installed app
 
 The package is `com.tamimi.naqiice`, the same as the earlier builds, with
-`versionCode 211` (3.1.1). An update installs **over** the existing app only when it is signed
+`versionCode 212` (3.1.2). An update installs **over** the existing app only when it is signed
 with the same key. Since 3.1.1 that is the key created on 2026-11-18 (`pureice-release.jks`,
 alias `pureice`, certificate SHA-256 `0f7235a3…eef6a26e`). Keep the key file and its password
 outside this repository; the owner holds them.
 
-The key used for 3.1.0 and earlier is lost, so moving a phone to 3.1.1 means uninstalling the
-old app once: first open it online and let everything sync (anything still waiting on the
-phone is deleted with it), then install 3.1.1 and sign in again. Later versions install over
-3.1.1 as normal updates.
+The key used for 3.1.0 and earlier is lost, so moving a phone from 3.1.0 or earlier to 3.1.1 or
+later means uninstalling the old app once: first open it online and let everything sync
+(anything still waiting on the phone is deleted with it), then install the new version and sign
+in again. From 3.1.1 on, versions install over each other as normal updates.
 
 #### Releasing from a phone (GitHub Actions)
 
