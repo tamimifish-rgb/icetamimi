@@ -146,6 +146,18 @@ class SupervisorScreensTest : ScreenHarness() {
         compose.waitForIdle()
     }
 
+    @Test fun closingShowsHandover() {
+        Fixture.handover = true
+        show(Screen.Closings, "supervisor")
+        compose.waitUntil(30_000) { pump(); compose.onAllNodesWithText("طريقة التسليم", substring = true).fetchSemanticsNodes().isNotEmpty() }
+        // sup-cl-e was handed over as 6,500 in cash and 5,000 by deposit; the other three closings (two
+        // supervisor ones and the admin fixture's) have no handover.
+        compose.onNodeWithText("نقد ${com.tamimi.naqiice.core.formatMoney(6500.0)} · إيداع ${com.tamimi.naqiice.core.formatMoney(5000.0)}", substring = true).assertExists()
+        compose.onAllNodesWithText("عرض إشعار الإيداع").assertCountEquals(1)
+        compose.onAllNodesWithText("طريقة التسليم: لم تُحدد", substring = true).assertCountEquals(3)
+        shot("sup-closings-handover")
+    }
+
     @Test fun supervisorSeesTheNoticeAndClosings() {
         show(Screen.Closings, "supervisor")
         await("شاحنة ٥ — 2026-11-12")

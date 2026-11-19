@@ -373,6 +373,12 @@ private fun StockTable(rows: List<List<String>>, closed: Boolean) {
 
 private val CLOSING_STATUS = mapOf("submitted" to "بانتظار المراجعة", "approved" to "معتمد", "flagged" to "يحتاج مراجعة")
 
+/** e.g. "نقد 6,500 ر.ي · إيداع 5,000 ر.ي"; only the parts that are not zero. */
+internal fun handoverText(cash: Double, transfer: Double): String = listOfNotNull(
+    if (cash > 0 || transfer == 0.0) "نقد ${formatMoney(cash)}" else null,
+    if (transfer > 0) "إيداع ${formatMoney(transfer)}" else null,
+).joinToString(" · ")
+
 @Composable
 fun ClosingsScreen() {
     val repo = LocalRepo.current
@@ -380,9 +386,15 @@ fun ClosingsScreen() {
     val toast = rememberToast()
     val me by repo.me.collectAsState()
     val depositSupport by repo.depositSupport.collectAsState()
+    val handoverSupport by repo.handoverSupport.collectAsState()
     var flagging by remember { mutableStateOf<String?>(null) }
+    var handovers by remember { mutableStateOf<List<DataRow>>(emptyList()) }
 
-    val load = rememberLoaded(me?.id, depositSupport) { bearer ->
+    val load = rememberLoaded(me?.id, depositSupport, handoverSupport) { bearer ->
+        // How each closing's cash was handed over (optional feature, like deposits).
+        handovers = if (!handoverSupport) emptyList() else try {
+            repo.api.selectAll("pureice_closing_handover", "select=*&order=closing_id", bearer)
+        } catch (e: ApiError) { emptyList() } catch (e: IOException) { emptyList() }
         val closings = repo.api.selectAll("closings", "select=*,trips(trip_date,trucks(name))&order=created_at.desc,id", bearer)
         // Deposits are an optional feature: without them the closings still show.
         val deposits = if (!depositSupport) emptyList() else try {
@@ -435,6 +447,14 @@ fun ClosingsScreen() {
                     Text(formatMoney(deposits.sumOf { it.num("amount") }), style = T.sm.bold)
                 }
                 deposits.forEach { DepositSlipButton(it.str("slip_path")) }
+                if (handoverSupport) {
+                    val handover = handovers.firstOrNull { it.str("closing_id") == closingId }
+                    Text(
+                        "طريقة التسليم: " + if (handover == null) "لم تُحدد" else handoverText(handover.num("cash_amount"), handover.num("transfer_amount")),
+                        Modifier.padding(top = 4.dp), style = T.sm,
+                    )
+                    if (handover != null && handover.num("transfer_amount") > 0) DepositSlipButton(handover.str("slip_path"), "عرض إشعار الإيداع")
+                }
                 Text(formatDate(c.str("created_at")), Modifier.padding(top = 4.dp), style = T.xs.muted)
                 if (status == "submitted") Row(Modifier.padding(top = 12.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     SmallBtn("اعتماد", { review(closingId, "approved", null) }, Modifier.weight(1f), enabled = !operation.busy)

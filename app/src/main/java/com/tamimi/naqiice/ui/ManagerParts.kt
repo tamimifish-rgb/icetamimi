@@ -154,16 +154,16 @@ fun ReasonDialog(title: String, confirm: String, onDismiss: () -> Unit, onConfir
 
 /** `DepositSlip`: an outline button that opens the slip photo through a short-lived signed link. */
 @Composable
-fun DepositSlipButton(path: String?) {
+fun DepositSlipButton(path: String?, label: String = "عرض إيصال الإيداع") {
     if (path.isNullOrEmpty()) return
     val repo = LocalRepo.current
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val toast = rememberToast()
-    SmallBtn("عرض إيصال الإيداع", {
+    SmallBtn(label, {
         scope.launch {
             try {
-                if (!openUrl(context, repo.api.signedUrl(Backend.RECEIPT_BUCKET, path, 300, repo.api.token()))) toast("تعذّر فتح الصورة")
+                if (!openUrl(context, repo.api.signedUrl(Backend.RECEIPT_BUCKET, path, 300, repo.api.token()))) toast("تعذّر فتح الملف")
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
