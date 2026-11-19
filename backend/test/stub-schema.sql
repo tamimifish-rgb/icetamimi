@@ -34,7 +34,11 @@ CREATE TABLE public.closings (
  counted_cash numeric NOT NULL, difference numeric NOT NULL DEFAULT 0, notes text, status text NOT NULL DEFAULT 'submitted',
  reviewed_by uuid, reviewed_at timestamptz, created_by uuid NOT NULL, created_at timestamptz NOT NULL DEFAULT now(),
  review_note text, resubmitted_at timestamptz);
-GRANT SELECT ON public.trips, public.closings, public.trucks, public.profiles, public.user_roles TO authenticated;
+CREATE TABLE public.expenses (
+ id uuid PRIMARY KEY DEFAULT gen_random_uuid(), truck_id uuid REFERENCES public.trucks(id), trip_id uuid REFERENCES public.trips(id),
+ category text NOT NULL DEFAULT 'وقود', amount numeric NOT NULL DEFAULT 0, odometer numeric, created_by uuid,
+ created_at timestamptz NOT NULL DEFAULT now());
+GRANT SELECT ON public.trips, public.closings, public.trucks, public.profiles, public.user_roles, public.expenses TO authenticated;
 
 -- Fixed test accounts: an admin, a supervisor, two distributors, an inactive distributor, and an id with no account.
 INSERT INTO public.profiles(id, full_name, active) VALUES
