@@ -14,5 +14,6 @@ BEGIN
     'SELECT public.finance_trip_scope(''11000000-0000-0000-0000-000000000001'')', 'the main distributor reads his campaign');
   PERFORM set_config('request.jwt.claim.sub', 'd2000000-0000-0000-0000-000000000000', true);
   PERFORM t.check(NOT public.finance_trip_scope('11000000-0000-0000-0000-000000000001'), 'the former assistant no longer reads it');
+  PERFORM t.check(t.visible('d1000000-0000-0000-0000-000000000000', 'SELECT * FROM public.pureice_deposits') = 0, 'the main distributor sees only his own deposits again');
   PERFORM t.check((SELECT count(*) FROM public.sales WHERE trip_id = '11000000-0000-0000-0000-000000000001') = 3, 'the three saved sales stay');
 END $$;

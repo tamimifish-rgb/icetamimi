@@ -393,8 +393,12 @@ CREATE TRIGGER finance_scope_backstop BEFORE INSERT ON public.expenses FOR EACH 
 CREATE TRIGGER guard_trip_loads BEFORE INSERT OR DELETE OR UPDATE ON public.trip_loads FOR EACH ROW EXECUTE FUNCTION guard_trip_loads();
 
 -- As on the live project: campaigns are read through finance_trip_scope; field tables take inserts
--- (their guards decide); functions are callable by signed-in accounts.
+-- (their guards decide); deposits are read by their owner or a manager; functions are callable by
+-- signed-in accounts.
 ALTER TABLE public.trips ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.pureice_deposits ENABLE ROW LEVEL SECURITY;
+CREATE POLICY deposit_read ON public.pureice_deposits FOR SELECT TO authenticated USING (is_staff(auth.uid()) AND ((created_by = auth.uid()) OR is_manager(auth.uid())));
+GRANT SELECT ON public.pureice_deposits TO authenticated;
 CREATE POLICY finance_read ON public.trips FOR SELECT TO authenticated USING (public.finance_trip_scope(id));
 GRANT SELECT, INSERT ON public.customers, public.sales, public.sale_items, public.payments, public.expenses, public.gps_points TO authenticated;
 GRANT SELECT ON public.products, public.product_variants, public.customer_prices, public.trip_loads, public.pureice_boxes TO authenticated;

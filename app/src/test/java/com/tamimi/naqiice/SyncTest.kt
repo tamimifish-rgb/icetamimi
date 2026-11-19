@@ -5,6 +5,7 @@ import com.tamimi.naqiice.core.bool
 import com.tamimi.naqiice.core.boxMoveRequest
 import com.tamimi.naqiice.core.boxStatusAfter
 import com.tamimi.naqiice.core.num
+import com.tamimi.naqiice.core.obj
 import com.tamimi.naqiice.core.rows
 import com.tamimi.naqiice.core.strings
 import com.tamimi.naqiice.core.with
@@ -57,6 +58,10 @@ private class FakeServer : Remote {
     var handoverSupport = false
     /** true: truck service plans and problem reports are live on the server. */
     var truckCareSupport = false
+    /** true: assistant distributors are live; [myOpenTrip] is what pureice_my_open_trip answers. */
+    var assistantSupport = false
+    var myOpenTrip: JsonElement = JsonNull
+    var snapshotTrip: String? = null
     val uploadTypes = HashMap<String, String>()
 
     fun table(name: String) = tables.getOrPut(name) { ArrayList() }
@@ -109,6 +114,7 @@ private class FakeServer : Remote {
                 return JsonNull
             }
             "accounting_snapshot" -> return buildJsonObject {
+                snapshotTrip = args.str("p_trip")
                 put("includedIds", JsonArray(included.map { JsonPrimitive(it) }))
                 put("balances", buildJsonArray { add(buildJsonObject { put("customer_id", "c1"); put("balance", 2000) }) })
                 put("stock", buildJsonArray { add(buildJsonObject { put("variant_id", "v1"); put("loaded", 100); put("sold", 10); put("returned", 0); put("damaged", 0) }) })
@@ -135,6 +141,8 @@ private class FakeServer : Remote {
                 }
                 return JsonNull
             }
+            "pureice_trip_assistant_support" -> if (assistantSupport) return JsonPrimitive(1) else throw ApiError(404, "PGRST202", "missing")
+            "pureice_my_open_trip" -> return myOpenTrip
             "pureice_truck_care_support" -> if (truckCareSupport) return JsonPrimitive(1) else throw ApiError(404, "PGRST202", "missing")
             "pureice_report_truck_issue" -> {
                 val request = args["p_request"] as JsonObject
@@ -203,6 +211,14 @@ private fun boxRow(n: Int, status: String = "truck") = buildJsonObject {
 
 private fun openTrip(server: FakeServer, status: String = "open") {
     server.table("trips").add(buildJsonObject { put("id", TRIP); put("distributor_id", OWNER); put("status", status); put("truck_id", "t1") })
+}
+
+/** OWNER assists OTHER's campaign [TRIP]; the server answers with the assistant role. */
+private fun assistTrip(server: FakeServer) {
+    val trip = buildJsonObject { put("id", TRIP); put("distributor_id", OTHER); put("status", "open"); put("truck_id", "t1") }
+    server.table("trips").add(trip)
+    server.assistantSupport = true
+    server.myOpenTrip = buildJsonObject { put("trip", trip); put("role", "assistant"); put("assistants", buildJsonArray { add(JsonPrimitive(OWNER)) }) }
 }
 
 class SyncTest {
@@ -432,6 +448,56 @@ class SyncTest {
         engine.flushOutbox(OWNER)
         assertEquals("blocked", store.getOp("h1")!!.state)
         assertTrue(server.uploads.isEmpty())
+    }
+
+    @Test fun assistantFindsHisTrip() = runTest {
+        assistTrip(server)
+        val ref = engine.fetchRef(OWNER)
+        assertEquals(TRIP, ref.obj("trip")?.str("id"))
+        assertEquals(TRIP, server.snapshotTrip) // stock and the campaign's sales come from his campaign
+        val snap = Snapshot(ref, emptyList(), OWNER)
+        assertEquals("assistant", snap.tripRole)
+        assertTrue(snap.ownOpenTrip(OWNER))
+        assertFalse(snap.canCloseOrApprove)
+    }
+
+    @Test fun mainDistributorKeepsHisRole() = runTest {
+        openTrip(server)
+        // A server without assistants: the campaign he leads, found as before.
+        val before = Snapshot(engine.fetchRef(OWNER), emptyList(), OWNER)
+        assertEquals("main", before.tripRole)
+        assertTrue(before.canCloseOrApprove)
+        // With assistants: the server says which campaign and which role.
+        server.assistantSupport = true
+        server.myOpenTrip = buildJsonObject { put("trip", server.table("trips").single()); put("role", "main"); put("assistants", buildJsonArray { add(JsonPrimitive(OTHER)) }) }
+        val after = Snapshot(engine.fetchRef(OWNER), emptyList(), OWNER)
+        assertEquals("main", after.tripRole)
+        assertEquals(listOf(OTHER), after.assistants)
+        assertTrue(after.ownOpenTrip(OWNER) && after.canCloseOrApprove)
+    }
+
+    @Test fun noTripWhenTheServerSaysNone() = runTest {
+        server.assistantSupport = true
+        // The old lookup would find this campaign; the server's answer (none) wins.
+        openTrip(server)
+        val snap = Snapshot(engine.fetchRef(OWNER), emptyList(), OWNER)
+        assertNull(snap.trip)
+        assertNull(snap.tripRole)
+        assertFalse(snap.ownOpenTrip(OWNER))
+    }
+
+    @Test fun assistantSaleRejectedForStockStaysBlocked() = runTest {
+        assistTrip(server)
+        engine.fetchRef(OWNER)
+        // The main distributor sold the last bags from his phone first.
+        server.failInvoice = "المخزون المعتمد غير كاف"
+        store.enqueue(OWNER, "sale", sale("s1"))
+        assertEquals(1, engine.flushOutbox(OWNER).failed)
+        val op = store.getOp("s1")!!
+        assertEquals("blocked", op.state)
+        assertEquals("المخزون المعتمد غير كاف", op.lastError)
+        engine.fetchRef(OWNER)
+        assertNotNull(store.getOp("s1")) // kept for review, never lost
     }
 
     @Test fun truckIssueQueuesOffline() = runTest {

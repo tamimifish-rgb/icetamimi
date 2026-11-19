@@ -188,6 +188,7 @@ CREATE OR REPLACE FUNCTION public.pureice_my_truck()
  SET search_path TO 'pg_catalog', 'public'
 AS $function$ SELECT truck_id FROM public.trips WHERE distributor_id = auth.uid() AND status = 'open' ORDER BY created_at DESC LIMIT 1 $function$;
 
+DROP POLICY campaign_member_read ON public.pureice_deposits;
 DROP FUNCTION public.pureice_set_trip_assistant(uuid, uuid, boolean);
 DROP FUNCTION public.pureice_my_open_trip();
 DROP FUNCTION public.pureice_trip_assistant_support();

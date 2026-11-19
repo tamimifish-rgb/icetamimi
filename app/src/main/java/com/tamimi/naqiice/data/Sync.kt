@@ -380,8 +380,18 @@ class SyncEngine(
         val trucks = remote.selectAll("trucks", "select=*&order=code,id", bearer)
         guard()
 
-        // Assigned campaign only; no profile-truck fallback.
-        val trip = remote.select("trips", "select=*&distributor_id=eq.$userId&status=neq.closed&order=created_at.desc&limit=1", bearer).firstOrNull()
+        // Assigned campaign only; no profile-truck fallback. With assistants on the server, it says
+        // which campaign (one he leads, else one he assists) and his role on it.
+        val assistantSupport = supported("pureice_trip_assistant_support", bearer)
+            ?: throw IllegalStateException("تعذّر تحديث الحملة")
+        val mine = if (assistantSupport) remote.rpc("pureice_my_open_trip", JsonObject(emptyMap()), bearer) as? JsonObject else null
+        val trip = if (assistantSupport) mine?.obj("trip")
+            else remote.select("trips", "select=*&distributor_id=eq.$userId&status=neq.closed&order=created_at.desc&limit=1", bearer).firstOrNull()
+        val tripRole = when {
+            trip == null -> null
+            assistantSupport -> mine?.str("role")
+            else -> "main"
+        }
         guard()
         val tripId = trip?.str("id")
         val unapprovedLoads = if (tripId != null) remote.selectAll("trip_loads", "select=*&trip_id=eq.$tripId&approved_at=is.null&order=id", bearer) else emptyList()
@@ -476,6 +486,8 @@ class SyncEngine(
             put("models", JsonArray(models))
             put("trucks", JsonArray(trucks))
             put("trip", trip ?: JsonNull)
+            put("tripRole", tripRole)
+            put("assistants", (mine?.get("assistants") as? JsonArray) ?: JsonArray(emptyList()))
             put("stock", accounting["stock"].orNull() ?: JsonArray(emptyList()))
             put("unapprovedLoads", JsonArray(unapprovedLoads))
             put("salesToday", JsonArray(accounting.rows("sales").map { withDeposit(it, deposit("sale", it.str("id"))) }))

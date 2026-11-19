@@ -100,8 +100,20 @@ class Snapshot(serverRef: Row?, outbox: List<OutboxOp>, val ownerId: String?) {
     val closingSent: Boolean get() = closing != null || closingQueued
     val closingQueued: Boolean get() = tripId != null && this.pending.any { it.kind == "closing" && it.payload.str("trip_id") == tripId }
 
-    /** The distributor's own open campaign, required for every field write. */
-    fun ownOpenTrip(userId: String?): Boolean = trip != null && userId != null && trip.str("distributor_id") == userId && trip.str("status") == "open"
+    /**
+     * "main" or "assistant" on the current campaign, null without one. A snapshot from a server
+     * without assistants has no role: he is main when the campaign is his.
+     */
+    val tripRole: String? = trip?.let { t -> ref?.str("tripRole") ?: if (t.str("distributor_id") == ownerId) "main" else null }
+    val isAssistant: Boolean get() = tripRole == "assistant"
+    /** Load approval, the closing and route tracking belong to the campaign's main distributor. */
+    val canCloseOrApprove: Boolean get() = tripRole == "main"
+    /** The campaign's assistants (user ids), as the server last said. */
+    val assistants: List<String> = ref?.strings("assistants") ?: emptyList()
+
+    /** An open campaign this account works on (as main or assistant), required for every field write. */
+    fun ownOpenTrip(userId: String?): Boolean = trip != null && userId != null && trip.str("status") == "open" &&
+        (trip.str("distributor_id") == userId || (userId == ownerId && tripRole == "assistant"))
 
     val day: Day by lazy { computeDay() }
 

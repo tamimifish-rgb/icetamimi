@@ -9,7 +9,8 @@
 -- CHANGES EXISTING FUNCTIONS: the eight below now accept "the campaign's main distributor or one of
 -- its assistants" where they accepted only the main distributor. Each change is that one condition;
 -- the rest of each function is the live definition of 2026-11-19, unchanged. With no assistants
--- added, every one of them behaves exactly as before, so the web app is unaffected.
+-- added, every one of them behaves exactly as before, so the web app is unaffected. One read policy
+-- is added on pureice_deposits (campaign members see the campaign's deposits).
 -- Undo: backend/95-trip-assistants-rollback.sql. Tests: backend/test/run.sh backend/95-trip-assistants.sql
 BEGIN;
 
@@ -89,6 +90,12 @@ BEGIN
 END $$;
 REVOKE ALL ON FUNCTION public.pureice_set_trip_assistant(uuid, uuid, boolean) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.pureice_set_trip_assistant(uuid, uuid, boolean) TO authenticated;
+
+-- The campaign's main distributor and its assistants see each other's deposits on it, so each
+-- phone's expected cash matches the server's (finance_expected subtracts every deposit on the
+-- campaign). Until now each distributor saw only his own.
+CREATE POLICY campaign_member_read ON public.pureice_deposits FOR SELECT TO authenticated
+  USING (public.finance_trip_scope(trip_id));
 
 -- Reading a campaign (trips, loads, snapshot, stock): its main distributor or an assistant.
 CREATE OR REPLACE FUNCTION public.finance_trip_scope(_trip uuid)

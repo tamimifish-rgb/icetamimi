@@ -13,6 +13,7 @@ INSERT INTO public.trips(id, truck_id, distributor_id, status, loading_approved_
 INSERT INTO public.trip_loads(trip_id, variant_id, qty, kind, approved_at) VALUES
  ('11000000-0000-0000-0000-000000000001', 'c1000000-0000-0000-0000-000000000001', 10, 'load', now()),
  ('11000000-0000-0000-0000-000000000001', 'c1000000-0000-0000-0000-000000000001', 5, 'load', NULL);
+INSERT INTO public.pureice_deposits(id, kind, trip_id, created_by, amount) VALUES ('de000000-0000-0000-0000-000000000001', 'sale', '11000000-0000-0000-0000-000000000001', 'd2000000-0000-0000-0000-000000000000', 0);
 INSERT INTO public.pureice_boxes(id, serial, status, truck_id) VALUES ('b0000000-0000-0000-0000-000000000001', 'B-1', 'truck', '71000000-0000-0000-0000-000000000000');
 SET session_replication_role = DEFAULT;
 
@@ -104,6 +105,8 @@ BEGIN
   snap := public.accounting_snapshot(trip1::uuid);
   PERFORM t.check(jsonb_array_length(snap->'sales') = 0, 'an outsider''s snapshot of campaign one is empty');
   PERFORM t.check(t.visible(d2, format('SELECT * FROM public.trips WHERE id = %L', trip1)) = 1, 'd2 reads campaign one');
+  PERFORM t.check(t.visible(d1, 'SELECT * FROM public.pureice_deposits') = 1, 'd1 sees d2''s deposit on his campaign');
+  PERFORM t.check(t.visible(d4, 'SELECT * FROM public.pureice_deposits') = 0, 'an outsider does not');
 
   -- Load approval and closing stay with the main distributor.
   PERFORM t.refused(d2, format('SELECT public.approve_trip_loads(%L)', trip1), 'the assistant approving the load');
