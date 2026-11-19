@@ -55,6 +55,8 @@ private class FakeServer : Remote {
     var failLocation = false
     /** true: the closing-handover feature is live on the server. */
     var handoverSupport = false
+    /** true: truck service plans and problem reports are live on the server. */
+    var truckCareSupport = false
     val uploadTypes = HashMap<String, String>()
 
     fun table(name: String) = tables.getOrPut(name) { ArrayList() }
@@ -132,6 +134,12 @@ private class FakeServer : Remote {
                     }
                 }
                 return JsonNull
+            }
+            "pureice_truck_care_support" -> if (truckCareSupport) return JsonPrimitive(1) else throw ApiError(404, "PGRST202", "missing")
+            "pureice_report_truck_issue" -> {
+                val request = args["p_request"] as JsonObject
+                if (table("pureice_truck_issues").none { it.str("id") == request.str("id") }) table("pureice_truck_issues").add(request)
+                return request
             }
             "pureice_closing_handover_support" -> if (handoverSupport) return JsonPrimitive(1) else throw ApiError(404, "PGRST202", "missing")
             "pureice_save_closing_handover" -> {
@@ -423,6 +431,36 @@ class SyncTest {
         store.enqueue(OWNER, "closing_handover", handover("h1", "k1", transfer = 9000, slip = "x.jpg").with("slip_path" to JsonPrimitive("$OTHER/x.jpg")))
         engine.flushOutbox(OWNER)
         assertEquals("blocked", store.getOp("h1")!!.state)
+        assertTrue(server.uploads.isEmpty())
+    }
+
+    @Test fun truckIssueQueuesOffline() = runTest {
+        openTrip(server)
+        server.truckCareSupport = true
+        store.enqueue(OWNER, "truck_issue", buildJsonObject {
+            put("id", "i1"); put("truck_id", "t1"); put("title", "الفرامل"); put("details", "صوت عند التوقف"); put("severity", "urgent")
+            put("photo_path", "$OWNER/issue-i1.jpg"); put("photo_blob", "/data/issue.jpg"); put("created_by", OWNER); put("created_at", "2026-11-14T09:00:00.000Z")
+        })
+        // An issue never holds anything back, and nothing holds it back.
+        store.enqueue(OWNER, "closing", closing("k1"))
+        engine.flushOutbox(OWNER)
+        assertEquals(listOf("$OWNER/issue-i1.jpg"), server.uploads)
+        val sent = server.table("pureice_truck_issues").single()
+        assertNull(sent["photo_blob"]) // the phone's file path never leaves the phone
+        assertEquals("الفرامل", sent.str("title"))
+        assertEquals("acknowledged", store.getOp("i1")!!.state)
+        engine.fetchRef(OWNER)
+        assertNull(store.getOp("i1"))
+    }
+
+    @Test fun truckIssuePhotoMustBeTheOwners() = runTest {
+        openTrip(server)
+        store.enqueue(OWNER, "truck_issue", buildJsonObject {
+            put("id", "i2"); put("truck_id", "t1"); put("title", "الإطار"); put("severity", "normal")
+            put("photo_path", "$OTHER/x.jpg"); put("photo_blob", "/data/x.jpg"); put("created_by", OWNER); put("created_at", "2026-11-14T09:00:00.000Z")
+        })
+        engine.flushOutbox(OWNER)
+        assertEquals("blocked", store.getOp("i2")!!.state)
         assertTrue(server.uploads.isEmpty())
     }
 

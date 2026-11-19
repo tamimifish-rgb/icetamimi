@@ -247,6 +247,7 @@ private fun ScreenContent(screen: Screen, me: Me) {
         Screen.CustomerMap -> Guard(fieldRoles) { CustomerMapScreen() }
         // Managers open anyone's profile; others only their own.
         is Screen.StaffProfile -> Guard(me.isManager || screen.id == me.id) { StaffProfileScreen(screen.id) }
+        Screen.TruckIssue -> Guard(fieldRoles) { TruckIssueScreen() }
         Screen.NewCustomer -> NewCustomerScreen()
         is Screen.Customer -> CustomerDetailScreen(screen.id)
         is Screen.Sale -> Guard(fieldRoles) { SaleScreen(screen.customer) }
@@ -313,7 +314,7 @@ fun WebDialog(title: String, onClose: () -> Unit, content: @Composable () -> Uni
 
 private val KIND_LABELS = mapOf(
     "sale" to "فاتورة", "payment" to "تحصيل", "expense" to "مصروف", "closing" to "إغلاق",
-    "customer" to "عميل", "maintenance" to "صيانة", "freezer_event" to "ثلاجة", "gps" to "موقع", "closing_handover" to "تسليم الإغلاق",
+    "customer" to "عميل", "maintenance" to "صيانة", "freezer_event" to "ثلاجة", "gps" to "موقع", "closing_handover" to "تسليم الإغلاق", "truck_issue" to "بلاغ عطل",
     "box_move" to "صناديق", "customer_location" to "موقع عميل",
 )
 

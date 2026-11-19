@@ -197,6 +197,17 @@ class SyncEngine(
             return null
         }
 
+        if (op.kind == "truck_issue") {
+            if (p.str("id") != op.id || p.str("created_by") != op.ownerId) throw IllegalStateException("تعارض معرف أو مالك السجل")
+            val path = p.str("photo_path")
+            if (path != null && !path.startsWith("${op.ownerId}/")) throw IllegalStateException("الصورة تخص حساباً آخر")
+            if (path != null) p.str("photo_blob")?.let { file -> readFile(file)?.let { remote.upload(bucket, path, it, "image/jpeg", bearer) } }
+            assertOwner(op.ownerId)
+            remote.rpc("pureice_report_truck_issue", buildJsonObject { put("p_request", p.without("photo_blob", "created_by", "created_at")) }, bearer)
+            assertOwner(op.ownerId)
+            return null
+        }
+
         if (op.kind == "closing_handover") {
             val closingId = p.str("closing_id")
             if (p.str("id") != op.id || p.str("created_by") != op.ownerId || closingId == null) throw IllegalStateException("تعارض معرف أو مالك السجل")
@@ -358,6 +369,7 @@ class SyncEngine(
         // Listed before any read: whatever these uploads changed is in the rows fetched below.
         val sideSent = store.outboxFor(userId).filter { it.kind in SIDE_KINDS && it.state == "acknowledged" }
         val handoversSent = store.outboxFor(userId).filter { it.kind == "closing_handover" && it.state == "acknowledged" }
+        val issuesSent = store.outboxFor(userId).filter { it.kind == "truck_issue" && it.state == "acknowledged" }
         val recordsSent = store.outboxFor(userId).filter { it.kind in recordTables && it.state == "acknowledged" }
         val variants = remote.selectAll("product_variants", "select=*,products(name,active,sort)&active=eq.true&order=sort,id", bearer)
         val regions = remote.selectAll("regions", "select=*&active=eq.true&order=sort,id", bearer)
@@ -403,6 +415,13 @@ class SyncEngine(
         if (boxSupport == true) for ((kind, table) in listOf("box_move" to "pureice_box_events", "customer_location" to "pureice_customer_locations")) {
             for (ids in sideSent.filter { it.kind == kind }.map { it.id }.chunked(40)) {
                 remote.select(table, "select=id&id=in.(${ids.joinToString(",")})", bearer).mapNotNullTo(sideEvidence) { it.str("id") }
+            }
+        }
+        // A truck problem report is cleared once the server holds its UUID.
+        val issueEvidence = HashSet<String>()
+        if (issuesSent.isNotEmpty() && supported("pureice_truck_care_support", bearer) == true) {
+            for (ids in issuesSent.map { it.id }.chunked(40)) {
+                remote.select("pureice_truck_issues", "select=id&id=in.(${ids.joinToString(",")})", bearer).mapNotNullTo(issueEvidence) { it.str("id") }
             }
         }
         // A handover is cleared when the server holds exactly what it sent: a later correction
@@ -477,6 +496,7 @@ class SyncEngine(
                     "customer" -> true
                     in SIDE_KINDS -> op.id in sideEvidence
                     "closing_handover" -> op.id in handoverEvidence
+                    "truck_issue" -> op.id in issueEvidence
                     else -> op.id in included || op.id in recordEvidence
                 }
                 val redundant = op.state == "reconciled" && closingEvidence.containsKey(op.id)

@@ -309,6 +309,8 @@ sealed interface Screen {
     data object CustomerMap : Screen
     /** One employee's sales figures and account (charged shortages, salary deductions). */
     data class StaffProfile(val id: String) : Screen
+    /** The distributor reports a problem with his campaign's truck. */
+    data object TruckIssue : Screen
     data object NewCustomer : Screen
     data class Customer(val id: String) : Screen
     data class Sale(val customer: String? = null) : Screen

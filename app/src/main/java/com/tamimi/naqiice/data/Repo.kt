@@ -89,6 +89,10 @@ class Repo(private val context: Context, private val httpClient: okhttp3.OkHttpC
     val handoverSupport = MutableStateFlow(false)
     /** The server keeps staff accounts (shortage decisions, salary deductions). */
     val ledgerSupport = MutableStateFlow(false)
+    /** The server keeps truck service plans and problem reports. */
+    val truckCareSupport = MutableStateFlow(false)
+    /** The open campaign's truck: {truck_id, plan, km, issues}; refreshed while online, kept offline. */
+    val truckCare = MutableStateFlow<JsonObject?>(null)
     val company = MutableStateFlow(Company.DEFAULT)
     val tracking = MutableStateFlow<TrackingState?>(null)
     /** "Keep the screen on" switch on the campaign screen (on by default, as on the web). */
@@ -148,7 +152,7 @@ class Repo(private val context: Context, private val httpClient: okhttp3.OkHttpC
         loop?.cancel()
         val session = api.currentSession()
         ref.value = null; pending.value = emptyList(); lastError.value = null
-        depositSupport.value = false; changeSupport.value = false; handoverSupport.value = false; ledgerSupport.value = false; company.value = Company.DEFAULT
+        depositSupport.value = false; changeSupport.value = false; handoverSupport.value = false; ledgerSupport.value = false; truckCareSupport.value = false; truckCare.value = null; company.value = Company.DEFAULT
         if (session == null) {
             me.value = null; loading.value = false
             trackingController?.invoke(this)
@@ -164,6 +168,8 @@ class Repo(private val context: Context, private val httpClient: okhttp3.OkHttpC
             changeSupport.value = store.getCache("${next.id}:invoice-change-support") == "true"
             handoverSupport.value = store.getCache("${next.id}:closing-handover-support") == "true"
             ledgerSupport.value = store.getCache("${next.id}:staff-ledger-support") == "true"
+            truckCareSupport.value = store.getCache("${next.id}:truck-care-support") == "true"
+            truckCare.value = store.cacheObject(next.id, "truck-care")
             store.cacheObject(next.id, "company")?.let { company.value = it.toCompany() }
         }
         reloadPending()
@@ -269,11 +275,27 @@ class Repo(private val context: Context, private val httpClient: okhttp3.OkHttpC
             Triple("pureice_invoice_change_support", "invoice-change-support", changeSupport),
             Triple("pureice_closing_handover_support", "closing-handover-support", handoverSupport),
             Triple("pureice_staff_ledger_support", "staff-ledger-support", ledgerSupport),
+            Triple("pureice_truck_care_support", "truck-care-support", truckCareSupport),
         )) runCatching {
             val supported = engine.featureSupport(user.id, function) ?: return@runCatching
             if (generation != version) return@runCatching
             store.putCache("${user.id}:$key", supported.toString())
             flow.value = supported
+        }
+        // The open campaign's truck: its service plan, odometer and open problem reports.
+        val truck = (ref.value?.get("trip") as? JsonObject)?.str("truck_id")
+        if (truckCareSupport.value && truck != null) runCatching {
+            val bearer = api.token()
+            val plan = api.select("pureice_truck_service_plan", "select=*&truck_id=eq.$truck", bearer).firstOrNull()
+            val km = api.rpc("pureice_truck_km", buildJsonObject { put("p_truck", truck) }, bearer)
+            val issues = api.selectAll("pureice_truck_issues", "select=*&truck_id=eq.$truck&status=neq.fixed&order=reported_at.desc,id", bearer)
+            if (generation != version) return@runCatching
+            val value = buildJsonObject {
+                put("truck_id", truck); put("plan", plan ?: JsonNull)
+                put("km", (km as? JsonPrimitive) ?: JsonNull); put("issues", JsonArray(issues))
+            }
+            store.setCacheObject(user.id, "truck-care", value)
+            truckCare.value = value
         }
         runCatching {
             val row = api.maybeSingle("pureice_company_settings", "select=name,address,phone,footer_note&id=eq.true", api.token())

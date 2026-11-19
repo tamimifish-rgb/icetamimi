@@ -69,6 +69,7 @@ abstract class ScreenHarness {
         Fixture.customerMap = false
         Fixture.handover = false
         Fixture.staffLedger = false
+        Fixture.truckCare = false
         Fixture.writes.clear()
         com.tamimi.naqiice.ui.scannerAsksForCamera = false
         Shadows.shadowOf(app).grantPermissions(Manifest.permission.ACCESS_FINE_LOCATION)

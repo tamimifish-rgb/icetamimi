@@ -1,0 +1,37 @@
+{
+ "tables": {
+  "pureice_truck_service_plan": [
+   {
+    "truck_id": "t1",
+    "interval_km": 5000,
+    "interval_days": 90,
+    "last_service_km": 118000,
+    "last_service_date": "2026-10-01",
+    "updated_at": "2026-10-01T09:00:00.000Z"
+   }
+  ],
+  "pureice_truck_issues": [
+   {
+    "id": "iss-1",
+    "truck_id": "t1",
+    "trip_id": "33333333-3333-3333-3333-333333333333",
+    "title": "التكييف لا يبرد",
+    "details": null,
+    "severity": "normal",
+    "photo_path": null,
+    "status": "open",
+    "reported_by": "11111111-1111-1111-1111-111111111111",
+    "reported_at": "2026-11-13T08:00:00.000Z"
+   }
+  ],
+  "pureice_truck_services": []
+ },
+ "rpc": {
+  "pureice_truck_care_support": 1,
+  "pureice_truck_km": 125000,
+  "pureice_report_truck_issue": {},
+  "pureice_set_service_plan": {},
+  "pureice_record_service": {},
+  "pureice_update_truck_issue": {}
+ }
+}

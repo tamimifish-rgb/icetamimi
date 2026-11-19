@@ -73,6 +73,7 @@ fun TodayScreen() {
 
     Column(verticalArrangement = Arrangement.spacedBy(20.dp)) {
         PageTitle(truck?.str("name")?.let { "$it — الحملة" } ?: "الحملة", spacing = 20.dp)
+        TruckServiceBanner()
         TrackingStatus(snap)
         if (toApprove.isNotEmpty()) location.prompt()
         if (trip == null) Empty("لا توجد حملة مفتوحة لك حالياً. انتظر المشرف لتعيين حملة وتحميل الشاحنة.")
@@ -229,11 +230,12 @@ fun MoreScreen() {
     val nav = LocalNav.current
     val snap by LocalRepo.current.snapshot.collectAsState()
     val me by LocalRepo.current.me.collectAsState()
+    val truckCareOn by LocalRepo.current.truckCareSupport.collectAsState()
     val items = listOfNotNull(
         me?.id?.let { Quick(Screen.StaffProfile(it), "حسابي", Lucide.Users) },
         Quick(Screen.Payment(), "تحصيل دين", Lucide.Wallet), Quick(Screen.NewCustomer, "إضافة عميل", Lucide.UserPlus), Quick(Screen.CustomerMap, "خريطة العملاء", Lucide.Map),
         Quick(Screen.FreezerAction(), "حركة ثلاجة", Lucide.Snowflake), Quick(Screen.Expenses, "المصروفات", Lucide.Receipt),
-        Quick(Screen.Maintenance, "الصيانة", Lucide.Wrench), Quick(Screen.InvoiceChanges, "طلبات إلغاء وتعديل الفواتير", Lucide.FileX2),
+        Quick(Screen.Maintenance, "الصيانة", Lucide.Wrench), if (truckCareOn) Quick(Screen.TruckIssue, "بلاغ عطل في الشاحنة", Lucide.AlertTriangle) else null, Quick(Screen.InvoiceChanges, "طلبات إلغاء وتعديل الفواتير", Lucide.FileX2),
         if (snap.boxSupport) Quick(Screen.Boxes, "الصناديق", Lucide.Boxes) else null,
         Quick(Screen.Closing, "إغلاق اليوم", Lucide.ClipboardCheck),
     )

@@ -51,6 +51,8 @@ class Fixture(private val base: JsonObject) : Interceptor {
         @Volatile var handover = false
         /** The staff account: shortage decisions and salary deductions. */
         @Volatile var staffLedger = false
+        /** Truck service plans and problem reports. */
+        @Volatile var truckCare = false
         /** Every write the app sent: "POST /rest/v1/rpc/pureice_box_move {…}". */
         val writes = java.util.concurrent.CopyOnWriteArrayList<String>()
         private fun merge(into: JsonObject, extra: JsonObject): JsonObject {
@@ -70,8 +72,9 @@ class Fixture(private val base: JsonObject) : Interceptor {
     private val withBoxes by lazy { merge(base, parseObject(File("src/test/fixtures/boxes.json").readText())) }
     private val withCustomerMap by lazy { merge(base, parseObject(File("src/test/fixtures/customer-map.json").readText())) }
     private val withHandover by lazy { merge(base, parseObject(File("src/test/fixtures/closing-handover.json").readText())) }
+    private val withTruckCare by lazy { merge(base, parseObject(File("src/test/fixtures/truck-care.json").readText())) }
     private val withStaffLedger by lazy { merge(base, parseObject(File("src/test/fixtures/staff-ledger.json").readText())) }
-    private val data: JsonObject get() = if (boxes) withBoxes else if (customerMap) withCustomerMap else if (handover) withHandover else if (staffLedger) withStaffLedger else base
+    private val data: JsonObject get() = if (boxes) withBoxes else if (customerMap) withCustomerMap else if (handover) withHandover else if (staffLedger) withStaffLedger else if (truckCare) withTruckCare else base
 
     private fun tables(): Map<String, List<Row>> {
         val owner = data.str("owner")
