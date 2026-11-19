@@ -21,11 +21,43 @@
    }
   ],
   "pureice_shortage_decision": [],
-  "pureice_staff_ledger": []
+  "pureice_staff_ledger": [
+   {
+    "id": "led-1",
+    "staff_id": "11111111-1111-1111-1111-111111111111",
+    "kind": "shortage",
+    "amount": 800,
+    "closing_id": "sup-cl-x",
+    "note": "نقص الصندوق",
+    "created_by": "sup-sv1",
+    "created_at": "2026-11-14T10:00:00.000Z"
+   },
+   {
+    "id": "led-2",
+    "staff_id": "11111111-1111-1111-1111-111111111111",
+    "kind": "deduction",
+    "amount": -500,
+    "closing_id": null,
+    "note": "خصم راتب نوفمبر",
+    "created_by": "sup-sv1",
+    "created_at": "2026-11-15T10:00:00.000Z"
+   },
+   {
+    "id": "led-3",
+    "staff_id": "sup-d6",
+    "kind": "shortage",
+    "amount": 1200,
+    "closing_id": null,
+    "note": null,
+    "created_by": "sup-sv1",
+    "created_at": "2026-11-15T10:00:00.000Z"
+   }
+  ]
  },
  "rpc": {
   "pureice_staff_ledger_support": 1,
   "pureice_decide_shortage": {},
-  "review_closing": {}
+  "review_closing": {},
+  "pureice_add_staff_entry": {}
  }
 }

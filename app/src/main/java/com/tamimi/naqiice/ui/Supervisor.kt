@@ -222,6 +222,7 @@ fun TripScreen(id: String) {
         PageTitle("${trip.obj("trucks")?.str("name") ?: ""} — ${trip.str("trip_date") ?: ""}", spacing = 20.dp)
         // The route lives on the map page (web: /map?trip=<id>).
         Btn("عرض خط السير", { nav.go(Screen.RouteMap(id)) }, variant = Variant.Outline, height = 44.dp)
+        trip.str("distributor_id")?.let { distributor -> Btn("ملف الموزع وحسابه", { nav.go(Screen.StaffProfile(distributor)) }, variant = Variant.Outline, height = 44.dp) }
         Banner(if (closed) Ice.muted else if (pendingLoads > 0) Ice.warning.copy(alpha = 0.3f) else Ice.success.copy(alpha = 0.15f)) {
             Text(
                 when {

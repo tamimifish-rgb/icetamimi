@@ -245,6 +245,8 @@ private fun ScreenContent(screen: Screen, me: Me) {
         Screen.Today -> Guard(fieldRoles) { TodayScreen() }
         Screen.Customers -> CustomersScreen()
         Screen.CustomerMap -> Guard(fieldRoles) { CustomerMapScreen() }
+        // Managers open anyone's profile; others only their own.
+        is Screen.StaffProfile -> Guard(me.isManager || screen.id == me.id) { StaffProfileScreen(screen.id) }
         Screen.NewCustomer -> NewCustomerScreen()
         is Screen.Customer -> CustomerDetailScreen(screen.id)
         is Screen.Sale -> Guard(fieldRoles) { SaleScreen(screen.customer) }

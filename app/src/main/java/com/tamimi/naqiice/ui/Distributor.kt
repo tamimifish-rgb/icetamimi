@@ -228,7 +228,9 @@ private fun TrackingStatus(snap: Snapshot) {
 fun MoreScreen() {
     val nav = LocalNav.current
     val snap by LocalRepo.current.snapshot.collectAsState()
+    val me by LocalRepo.current.me.collectAsState()
     val items = listOfNotNull(
+        me?.id?.let { Quick(Screen.StaffProfile(it), "حسابي", Lucide.Users) },
         Quick(Screen.Payment(), "تحصيل دين", Lucide.Wallet), Quick(Screen.NewCustomer, "إضافة عميل", Lucide.UserPlus), Quick(Screen.CustomerMap, "خريطة العملاء", Lucide.Map),
         Quick(Screen.FreezerAction(), "حركة ثلاجة", Lucide.Snowflake), Quick(Screen.Expenses, "المصروفات", Lucide.Receipt),
         Quick(Screen.Maintenance, "الصيانة", Lucide.Wrench), Quick(Screen.InvoiceChanges, "طلبات إلغاء وتعديل الفواتير", Lucide.FileX2),

@@ -369,6 +369,7 @@ private class Staff(val profiles: List<DataRow>, val roles: List<DataRow>, val t
 @Composable
 fun AdminUsersScreen() {
     val repo = LocalRepo.current
+    val nav = LocalNav.current
     val me by repo.me.collectAsState()
     val toast = rememberToast()
     val operation = rememberOperation()
@@ -440,6 +441,7 @@ fun AdminUsersScreen() {
                             (if (p.bool("pin_enabled") != true) " · يستخدم بيانات الدخول السابقة" else ""),
                         Modifier.weight(1f), style = T.sm,
                     )
+                    if (id != null) Btn("الملف", { nav.go(Screen.StaffProfile(id)) }, variant = Variant.Outline, height = 44.dp)
                     Btn("تعديل" + if (id == me?.id) " حسابي" else "", {
                         visible = false
                         form = StaffForm(id, p.str("full_name") ?: "", p.str("username") ?: "", "", role.ifEmpty { "distributor" }, p.str("truck_id") ?: "", p.bool("active") == true)
