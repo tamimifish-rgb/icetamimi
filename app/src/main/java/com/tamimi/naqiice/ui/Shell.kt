@@ -311,7 +311,7 @@ fun WebDialog(title: String, onClose: () -> Unit, content: @Composable () -> Uni
 
 private val KIND_LABELS = mapOf(
     "sale" to "فاتورة", "payment" to "تحصيل", "expense" to "مصروف", "closing" to "إغلاق",
-    "customer" to "عميل", "maintenance" to "صيانة", "freezer_event" to "ثلاجة", "gps" to "موقع",
+    "customer" to "عميل", "maintenance" to "صيانة", "freezer_event" to "ثلاجة", "gps" to "موقع", "closing_handover" to "تسليم الإغلاق",
     "box_move" to "صناديق", "customer_location" to "موقع عميل",
 )
 

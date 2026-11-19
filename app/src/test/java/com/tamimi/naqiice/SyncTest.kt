@@ -53,6 +53,9 @@ private class FakeServer : Remote {
     var boxSupport: Boolean? = false
     var failBoxMove = false
     var failLocation = false
+    /** true: the closing-handover feature is live on the server. */
+    var handoverSupport = false
+    val uploadTypes = HashMap<String, String>()
 
     fun table(name: String) = tables.getOrPut(name) { ArrayList() }
 
@@ -130,6 +133,15 @@ private class FakeServer : Remote {
                 }
                 return JsonNull
             }
+            "pureice_closing_handover_support" -> if (handoverSupport) return JsonPrimitive(1) else throw ApiError(404, "PGRST202", "missing")
+            "pureice_save_closing_handover" -> {
+                val request = args["p_request"] as JsonObject
+                val closing = table("closings").firstOrNull { it.str("id") == request.str("closing_id") } ?: throw ApiError(400, "42501", "الإغلاق ليس لهذا الحساب")
+                if (request.num("cash_amount") + request.num("transfer_amount") != closing.num("counted_cash")) throw ApiError(400, "22023", "mismatch")
+                table("pureice_closing_handover").removeAll { it.str("closing_id") == request.str("closing_id") }
+                table("pureice_closing_handover").add(request)
+                return request
+            }
             "pureice_set_customer_location" -> {
                 if (failLocation) throw ApiError(400, "P0001", "العميل غير موجود")
                 val request = args["p_request"] as JsonObject
@@ -141,7 +153,7 @@ private class FakeServer : Remote {
         throw ApiError(404, "PGRST202", "missing")
     }
 
-    override suspend fun upload(bucket: String, path: String, bytes: ByteArray, contentType: String, bearer: String) { uploads.add(path) }
+    override suspend fun upload(bucket: String, path: String, bytes: ByteArray, contentType: String, bearer: String) { uploads.add(path); uploadTypes[path] = contentType }
 }
 
 private fun sale(id: String, customer: String = "c1", qty: Int = 5, credit: Int = 1000) = buildJsonObject {
@@ -153,6 +165,15 @@ private fun sale(id: String, customer: String = "c1", qty: Int = 5, credit: Int 
 private fun closing(id: String, counted: Int = 9000) = buildJsonObject {
     put("id", id); put("trip_id", TRIP); put("expected_cash", 9000); put("counted_cash", counted); put("difference", 0)
     put("notes", JsonNull); put("created_by", OWNER); put("created_at", "2026-11-14T15:00:00.000Z")
+}
+
+/** A closing handover as the phone queues it: [transfer] of [counted] by deposit, the rest in cash. */
+private fun handover(id: String, closing: String, counted: Int = 9000, transfer: Int = 0, slip: String? = null) = buildJsonObject {
+    put("id", id); put("closing_id", closing); put("trip_id", TRIP)
+    put("cash_amount", counted - transfer); put("transfer_amount", transfer)
+    if (slip != null) { put("slip_path", "$OWNER/$slip"); put("slip_blob", "/data/$slip"); put("slip_type", if (slip.endsWith(".pdf")) "application/pdf" else "image/jpeg") }
+    else put("slip_path", JsonNull)
+    put("created_by", OWNER); put("created_at", "2026-11-14T15:00:01.000Z")
 }
 
 private fun customer(id: String) = buildJsonObject {
@@ -343,6 +364,66 @@ class SyncTest {
         engine.flushOutbox(OWNER)
         engine.fetchRef(OWNER) // the open campaign's snapshot does not list route points
         assertNull(store.getOp("g1"))
+    }
+
+    @Test fun handoverWaitsForItsClosing() = runTest {
+        openTrip(server)
+        server.failInvoice = "المخزون غير كاف"
+        store.enqueue(OWNER, "sale", sale("s1"))
+        store.enqueue(OWNER, "closing", closing("k1"))
+        store.enqueue(OWNER, "closing_handover", handover("h1", "k1", transfer = 4000, slip = "handover-k1.jpg"))
+        engine.flushOutbox(OWNER)
+        assertFalse(server.calls.contains("rpc:pureice_save_closing_handover"))
+        assertEquals("blocked", store.getOp("h1")!!.state)
+        assertTrue(server.uploads.isEmpty()) // the slip waits with it
+        // Once the sale and the closing go through, the handover follows them.
+        server.failInvoice = null
+        engine.flushOutbox(OWNER)
+        assertTrue(server.calls.indexOf("rpc:submit_closing") < server.calls.indexOf("rpc:pureice_save_closing_handover"))
+        assertEquals("acknowledged", store.getOp("h1")!!.state)
+    }
+
+    @Test fun handoverArchivedOnServerCopy() = runTest {
+        openTrip(server)
+        server.handoverSupport = true
+        store.enqueue(OWNER, "closing", closing("k1"))
+        store.enqueue(OWNER, "closing_handover", handover("h1", "k1", transfer = 9000, slip = "handover-k1.jpg"))
+        engine.flushOutbox(OWNER)
+        engine.fetchRef(OWNER)
+        assertNull(store.getOp("h1"))
+        assertNotNull(store.cacheObject(OWNER, "operation:h1"))
+    }
+
+    @Test fun handoverStaysWhenTheServerHoldsOtherValues() = runTest {
+        openTrip(server)
+        server.handoverSupport = true
+        store.enqueue(OWNER, "closing", closing("k1"))
+        store.enqueue(OWNER, "closing_handover", handover("h1", "k1"))
+        engine.flushOutbox(OWNER)
+        // Another correction reached the server meanwhile.
+        server.table("pureice_closing_handover").replaceAll { it.with("cash_amount" to JsonPrimitive(0), "transfer_amount" to JsonPrimitive(9000)) }
+        engine.fetchRef(OWNER)
+        assertEquals("acknowledged", store.getOp("h1")!!.state)
+    }
+
+    @Test fun pdfSlipUploadsAsPdf() = runTest {
+        openTrip(server)
+        store.enqueue(OWNER, "closing", closing("k1"))
+        store.enqueue(OWNER, "closing_handover", handover("h1", "k1", transfer = 9000, slip = "handover-k1.pdf"))
+        engine.flushOutbox(OWNER)
+        assertEquals("application/pdf", server.uploadTypes["$OWNER/handover-k1.pdf"])
+        val request = server.table("pureice_closing_handover").single()
+        assertEquals("$OWNER/handover-k1.pdf", request.str("slip_path"))
+        assertNull(request["slip_blob"]) // the phone's file path never leaves the phone
+    }
+
+    @Test fun handoverSlipMustBeTheOwners() = runTest {
+        openTrip(server)
+        store.enqueue(OWNER, "closing", closing("k1"))
+        store.enqueue(OWNER, "closing_handover", handover("h1", "k1", transfer = 9000, slip = "x.jpg").with("slip_path" to JsonPrimitive("$OTHER/x.jpg")))
+        engine.flushOutbox(OWNER)
+        assertEquals("blocked", store.getOp("h1")!!.state)
+        assertTrue(server.uploads.isEmpty())
     }
 
     @Test fun localCopyIsKeptUntilTheSnapshotIncludesIt() = runTest {
