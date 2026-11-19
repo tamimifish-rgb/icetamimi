@@ -7,6 +7,7 @@ The app talks to the live "Tamimi Ice" Supabase project. Its base schema lives w
 |---|---|---|
 | `90-boxes-and-customer-location.sql` | Returnable box tracking (`pureice_boxes`, `pureice_box_events`, `pureice_box_variants`, `pureice_box_move`, `pureice_box_add`) and customer location capture (`pureice_customer_locations`, `pureice_set_customer_location`) | `pureice_box_support()` |
 | `91-performance.sql` | Speed only: `trip_id` indexes on `gps_points`, `payments` and `expenses`, and the 38 access rules on the 10 busiest tables rewritten to check the signed-in user once per query instead of once per row. Undone by `91-performance-rollback.sql` | — (no behaviour change) |
+| `92-closing-handover.sql` | How a closing's counted cash reaches the company: cash, deposit/transfer, or both, with the slip (`pureice_closing_handover`, `pureice_save_closing_handover`) | `pureice_closing_handover_support()` |
 
 Rules these files follow:
 
@@ -64,4 +65,24 @@ supervisor, two distributors, a deactivated distributor and an unknown account e
 (as themselves and as someone else), updated and deleted on every table, plus the flagged-closing
 resubmit: 312 results, identical before the script, after it and after the rollback. The rollback
 restores every rule's text exactly.
+
+## 92-closing-handover.sql
+
+Applied to the live project on 2026-11-19 as migration `pureice_closing_handover`, after the owner
+approved it. Tests: `backend/test/run.sh backend/92-closing-handover.sql`, 25 checks covering every
+account kind, including sums that don't add up, missing or foreign slips, approved closings and
+repeated requests.
+
+Checked on the live project after applying, in a rolled-back transaction:
+- a real distributor gets `1` from the support function;
+- a change to his approved closing is refused;
+- a supervisor cannot write a distributor's handover;
+- both see only the rows they should.
+
+The security advisor's only new entries are the two functions, listed under "signed-in users can
+execute a SECURITY DEFINER function". That is intended: both check the caller themselves.
+
+`backend/test/` is the harness for every script from 92 on:
+- `stub-schema.sql` holds the live helper functions and the tables these scripts touch;
+- `run.sh` starts a throwaway Postgres 16, applies one script, and runs its `.test.sql` as each kind of account.
 
