@@ -1,0 +1,6 @@
+{
+ "rpc": {
+  "pureice_closing_handover_support": 1,
+  "pureice_save_closing_handover": {}
+ }
+}
