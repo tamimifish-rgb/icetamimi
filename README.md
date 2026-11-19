@@ -53,7 +53,7 @@ Or open the folder in Android Studio and run the `app` configuration.
 ### Release and updating the installed app
 
 The package is `com.tamimi.naqiice`, the same as the earlier builds, with
-`versionCode 216` (3.5.0). An update installs **over** the existing app only when it is signed
+`versionCode 217` (3.6.0). An update installs **over** the existing app only when it is signed
 with the same key. Since 3.1.1 that is the key created on 2026-11-18 (`pureice-release.jks`,
 alias `pureice`, certificate SHA-256 `0f7235a3…eef6a26e`). Keep the key file and its password
 outside this repository; the owner holds them.
