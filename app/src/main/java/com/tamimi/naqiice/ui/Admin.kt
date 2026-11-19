@@ -151,6 +151,7 @@ fun AdminHomeScreen() {
 fun AdminSetupScreen() {
     val nav = LocalNav.current
     val boxSupport = LocalRepo.current.snapshot.collectAsState().value.boxSupport
+    val truckCareOn = LocalRepo.current.truckCareSupport.collectAsState().value
     val items = listOf(
         Triple(Lucide.Package, "المنتجات والأسعار", Screen.AdminProducts),
         Triple(Lucide.Store, "العملاء والأسعار الخاصة", Screen.AdminCustomers),
@@ -159,7 +160,7 @@ fun AdminSetupScreen() {
         Triple(Lucide.Users, "الموظفون والصلاحيات", Screen.AdminUsers),
         Triple(Lucide.Snowflake, "الثلاجات", Screen.AdminFreezers),
         Triple(Lucide.ClipboardCheck, "إغلاقات اليوم", Screen.Closings),
-    ) + if (boxSupport) listOf(Triple(Lucide.Boxes, "الصناديق", Screen.Boxes), Triple(Lucide.QrCode, "إعداد الصناديق", Screen.AdminBoxes)) else emptyList()
+    ) + (if (truckCareOn) listOf(Triple(Lucide.Wrench, "صيانة الشاحنات", Screen.TruckCare)) else emptyList()) + if (boxSupport) listOf(Triple(Lucide.Boxes, "الصناديق", Screen.Boxes), Triple(Lucide.QrCode, "إعداد الصناديق", Screen.AdminBoxes)) else emptyList()
     Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
         PageTitle("الإعدادات")
         NavList(items.map { (icon, label, screen) -> Triple(icon, label) { nav.go(screen) } })

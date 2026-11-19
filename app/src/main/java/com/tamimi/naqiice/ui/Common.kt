@@ -311,6 +311,8 @@ sealed interface Screen {
     data class StaffProfile(val id: String) : Screen
     /** The distributor reports a problem with his campaign's truck. */
     data object TruckIssue : Screen
+    /** Managers: service plans, services and problem reports for every truck. */
+    data object TruckCare : Screen
     data object NewCustomer : Screen
     data class Customer(val id: String) : Screen
     data class Sale(val customer: String? = null) : Screen

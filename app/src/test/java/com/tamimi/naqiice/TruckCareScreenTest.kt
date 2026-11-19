@@ -41,4 +41,44 @@ class TruckCareScreenTest : ScreenHarness() {
         compose.onNodeWithText("بلاغ عطل في الشاحنة").performScrollTo().performClick()
         waitFor("عنوان المشكلة")
     }
+
+    @Test fun truckCareListsDueTruckFirst() {
+        show(Screen.TruckCare, "supervisor")
+        waitFor("تحتاج صيانة")
+        // t1 is due (5,000 km plan, 7,000 km driven); the other trucks have no plan yet.
+        val due = compose.onAllNodesWithText("شاحنة ١", substring = true).fetchSemanticsNodes().first().boundsInRoot.top
+        val other = compose.onAllNodesWithText("شاحنة ٢", substring = true).fetchSemanticsNodes().first().boundsInRoot.top
+        assertTrue("the due truck comes first", due < other)
+        compose.onNodeWithText("التكييف لا يبرد", substring = true).assertExists()
+        shot("truck-care")
+    }
+
+    @Test fun markIssueFixed() {
+        show(Screen.TruckCare, "supervisor")
+        waitFor("التكييف لا يبرد")
+        compose.onNodeWithText("تم الإصلاح").performScrollTo().performClick()
+        compose.waitUntil(30_000) { pump(); Fixture.writes.any { "pureice_update_truck_issue" in it } }
+        val call = Fixture.writes.first { "pureice_update_truck_issue" in it }
+        assertTrue(call, "\"p_id\":\"iss-1\"" in call && "\"p_status\":\"fixed\"" in call)
+    }
+
+    @Test fun recordService() {
+        show(Screen.TruckCare, "supervisor")
+        waitFor("تحتاج صيانة")
+        compose.onAllNodesWithText("تسجيل صيانة")[0].performScrollTo().performClick()
+        compose.waitForIdle()
+        // The km starts at the truck's latest reading.
+        compose.onNodeWithText("125000").assertExists()
+        compose.onNodeWithText("التكلفة").performTextInput("30000")
+        compose.onNodeWithText("حفظ").performClick()
+        compose.waitUntil(30_000) { pump(); Fixture.writes.any { "pureice_record_service" in it } }
+        val call = Fixture.writes.first { "pureice_record_service" in it }
+        assertTrue(call, "\"p_truck\":\"t1\"" in call && "\"p_km\":125000" in call && "\"p_cost\":30000" in call)
+    }
+
+    @Test fun distributorCannotOpenTruckCare() {
+        show(Screen.TruckCare)
+        compose.waitForIdle()
+        assertTrue(compose.onAllNodesWithText("تسجيل صيانة").fetchSemanticsNodes().isEmpty())
+    }
 }
