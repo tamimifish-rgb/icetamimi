@@ -305,6 +305,8 @@ fun Modifier.tap(enabled: Boolean = true, onClick: () -> Unit): Modifier =
 sealed interface Screen {
     data object Today : Screen
     data object Customers : Screen
+    /** The distributor's customers on a map, marking those invoiced in this campaign. */
+    data object CustomerMap : Screen
     data object NewCustomer : Screen
     data class Customer(val id: String) : Screen
     data class Sale(val customer: String? = null) : Screen

@@ -244,6 +244,7 @@ private fun ScreenContent(screen: Screen, me: Me) {
         Screen.Pending -> PendingScreen()
         Screen.Today -> Guard(fieldRoles) { TodayScreen() }
         Screen.Customers -> CustomersScreen()
+        Screen.CustomerMap -> Guard(fieldRoles) { CustomerMapScreen() }
         Screen.NewCustomer -> NewCustomerScreen()
         is Screen.Customer -> CustomerDetailScreen(screen.id)
         is Screen.Sale -> Guard(fieldRoles) { SaleScreen(screen.customer) }

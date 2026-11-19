@@ -229,7 +229,7 @@ fun MoreScreen() {
     val nav = LocalNav.current
     val snap by LocalRepo.current.snapshot.collectAsState()
     val items = listOfNotNull(
-        Quick(Screen.Payment(), "تحصيل دين", Lucide.Wallet), Quick(Screen.NewCustomer, "إضافة عميل", Lucide.UserPlus),
+        Quick(Screen.Payment(), "تحصيل دين", Lucide.Wallet), Quick(Screen.NewCustomer, "إضافة عميل", Lucide.UserPlus), Quick(Screen.CustomerMap, "خريطة العملاء", Lucide.Map),
         Quick(Screen.FreezerAction(), "حركة ثلاجة", Lucide.Snowflake), Quick(Screen.Expenses, "المصروفات", Lucide.Receipt),
         Quick(Screen.Maintenance, "الصيانة", Lucide.Wrench), Quick(Screen.InvoiceChanges, "طلبات إلغاء وتعديل الفواتير", Lucide.FileX2),
         if (snap.boxSupport) Quick(Screen.Boxes, "الصناديق", Lucide.Boxes) else null,
@@ -339,7 +339,12 @@ fun CustomerPicker(onPick: (String) -> Unit) {
 fun CustomersScreen() {
     val nav = LocalNav.current
     Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
-        PageTitle("العملاء") { Btn("عميل جديد", { nav.go(Screen.NewCustomer) }, height = 32.dp, style = T.xs.medium, icon = Lucide.UserPlus) }
+        PageTitle("العملاء") {
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlineBtn("الخريطة", small = true) { nav.go(Screen.CustomerMap) }
+                Btn("عميل جديد", { nav.go(Screen.NewCustomer) }, height = 32.dp, style = T.xs.medium, icon = Lucide.UserPlus)
+            }
+        }
         CustomerPicker { nav.go(Screen.Customer(it)) }
     }
 }
