@@ -34,6 +34,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -76,11 +77,16 @@ import org.osmdroid.views.overlay.infowindow.InfoWindow
 import java.io.File
 import kotlin.math.floor
 
-data class MapStop(val lat: Double, val lng: Double, val label: String)
+/** How a stop is drawn: an invoice on a route, or a customer not yet / already invoiced. */
+enum class StopStyle { Sale, Customer, Visited }
+
+data class MapStop(val lat: Double, val lng: Double, val label: String, val style: StopStyle = StopStyle.Sale, val customerId: String? = null)
 
 // The web map's --chart-1 (route) and --success (stops, last position) colours.
 private val ROUTE = Color(0xFF007BB2).toArgb()
 private val STOP = Ice.success.toArgb()
+/** A customer not yet invoiced in this campaign: the muted text colour. */
+private val CUSTOMER = Ice.mutedText.toArgb()
 
 /** Leaflet's own colours: container background, control frame and control text. */
 private val MAP_BACKGROUND = Color(0xFFDDDDDD)
@@ -120,7 +126,15 @@ private fun dot(radius: Float, color: Int, opacity: Float, density: Float): Draw
  */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-fun TripMap(points: List<TrackPoint>, sales: List<MapStop>, open: Boolean) {
+fun TripMap(
+    points: List<TrackPoint>,
+    sales: List<MapStop>,
+    open: Boolean,
+    description: String = "خريطة مسار الحملة",
+    /** When set, tapping a stop calls this instead of showing its label. */
+    onStop: ((MapStop) -> Unit)? = null,
+) {
+    val tapStop by rememberUpdatedState(onStop)
     val context = LocalContext.current
     val density = context.resources.displayMetrics.density
     var source by remember { mutableIntStateOf(0) }
@@ -194,11 +208,18 @@ fun TripMap(points: List<TrackPoint>, sales: List<MapStop>, open: Boolean) {
         val first = dot(9f, ROUTE, 0.85f, density)
         val last = dot(9f, STOP, 0.85f, density)
         val sale = dot(7f, STOP, 0.9f, density)
-        fun marker(at: GeoPoint, icon: Drawable, label: String) = map.overlays.add(Marker(map).apply {
+        val customer = dot(8f, CUSTOMER, 0.75f, density)
+        val visited = dot(8f, STOP, 0.9f, density)
+        fun marker(at: GeoPoint, icon: Drawable, label: String, stop: MapStop? = null) = map.overlays.add(Marker(map).apply {
             position = at
             this.icon = icon
             setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_CENTER)
             title = label
+            if (stop != null) setOnMarkerClickListener { m, _ ->
+                val tap = tapStop
+                if (tap != null) tap(stop) else m.showInfoWindow()
+                true
+            }
         })
         points.forEachIndexed { i, p ->
             val isFirst = i == 0
@@ -206,7 +227,7 @@ fun TripMap(points: List<TrackPoint>, sales: List<MapStop>, open: Boolean) {
             val label = (if (isFirst) "بداية المسار · " else "") + (if (isLast) if (open) "آخر موقع للشاحنة · " else "نهاية المسار · " else "") + adenTime(p.recordedAt)
             marker(coords[i], if (isLast) last else if (isFirst) first else small, label)
         }
-        sales.forEach { marker(GeoPoint(it.lat, it.lng), sale, it.label) }
+        sales.forEach { marker(GeoPoint(it.lat, it.lng), when (it.style) { StopStyle.Sale -> sale; StopStyle.Customer -> customer; StopStyle.Visited -> visited }, it.label, it) }
         val all = coords + sales.map { GeoPoint(it.lat, it.lng) }
         // Leaflet's fitBounds({ padding: [30, 30], maxZoom: 16 }): the deepest whole zoom level
         // that shows every point 30px clear of the frame, centred on them.
@@ -225,7 +246,7 @@ fun TripMap(points: List<TrackPoint>, sales: List<MapStop>, open: Boolean) {
         val height = maxOf(LocalConfiguration.current.screenHeightDp * 0.55f, 320f).dp
         CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
             Box(
-                Modifier.fillMaxWidth().height(height).semantics { contentDescription = "خريطة مسار الحملة" }
+                Modifier.fillMaxWidth().height(height).semantics { contentDescription = description }
                     .box(Radius.lg, MAP_BACKGROUND).clip(RoundedCornerShape(Radius.lg - 1.dp)),
             ) {
                 AndroidView(factory = { map }, modifier = Modifier.fillMaxSize())

@@ -1,5 +1,9 @@
 package com.tamimi.naqiice.ui
 
+import com.tamimi.naqiice.core.bool
+import kotlinx.serialization.json.JsonNull
+import androidx.compose.material3.TextButton
+import androidx.compose.material3.AlertDialog
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -60,20 +64,22 @@ private fun DataRow.closing(): DataRow? = obj("closings") ?: rows("closings").fi
 
 private class TripsData(
     val trucks: List<DataRow>, val trips: List<DataRow>, val profiles: List<DataRow>,
-    val openTrips: List<DataRow>, val distributors: List<DataRow>,
+    val openTrips: List<DataRow>, val distributors: List<DataRow>, val assistants: List<DataRow> = emptyList(),
 )
 
 @Composable
 fun TripsScreen() {
     val repo = LocalRepo.current
     val nav = LocalNav.current
+    val truckCareOn by repo.truckCareSupport.collectAsState()
+    val assistantsOn by repo.assistantSupport.collectAsState()
     val operation = rememberOperation()
     val toast = rememberToast()
     var date by remember { mutableStateOf(adenDay()) }
     val pick = remember { mutableStateMapOf<String, String>() }
     val boxSupport = repo.snapshot.collectAsState().value.boxSupport
 
-    val load = rememberLoaded(date) { bearer ->
+    val load = rememberLoaded(date, assistantsOn) { bearer ->
         coroutineScope {
             val api = repo.api
             val trucks = async { api.select("trucks", "select=*&active=eq.true&order=code", bearer) }
@@ -81,8 +87,9 @@ fun TripsScreen() {
             val profiles = async { api.select("profiles", "select=id,full_name,truck_id", bearer) }
             val openTrips = async { api.selectAll("trips", "select=id,truck_id,distributor_id,trip_date,status&status=neq.closed&order=trip_date,id", bearer) }
             val roles = async { api.select("user_roles", "select=user_id&role=eq.distributor", bearer) }
+            val assistants = async { if (assistantsOn) api.selectAll("pureice_trip_assistants", "select=trip_id,user_id&order=trip_id,added_at", bearer) else emptyList() }
             val ids = roles.await().mapNotNull { it.str("user_id") }.toHashSet()
-            TripsData(trucks.await(), trips.await(), profiles.await(), openTrips.await(), profiles.await().filter { it.str("id") in ids })
+            TripsData(trucks.await(), trips.await(), profiles.await(), openTrips.await(), profiles.await().filter { it.str("id") in ids }, assistants.await())
         }
     }
 
@@ -105,6 +112,7 @@ fun TripsScreen() {
     // div.space-y-4
     Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
         PageTitle("الشاحنات") { DateInput(date, Modifier.width(160.dp)) { date = it } }
+        if (truckCareOn) OutlineBtn("صيانة الشاحنات", Modifier.fillMaxWidth()) { nav.go(Screen.TruckCare) }
         if (boxSupport) Btn("الصناديق", { nav.go(Screen.Boxes) }, variant = Variant.Outline, height = 44.dp, icon = Lucide.Boxes)
         val data = load.data
         if (load.error != null) LoadError(load.error, load.reload)
@@ -130,7 +138,8 @@ fun TripsScreen() {
                         trip.str("loading_approved_at") != null -> "جارية (التحميل معتمد)"
                         else -> "بانتظار اعتماد الموزع للتحميل"
                     }
-                    TripLink("حملة ${index + 1} · ${name(trip.str("distributor_id"))}", "$state · ${formatMoney(total)}") { trip.str("id")?.let { nav.go(Screen.Trip(it)) } }
+                    val helpers = data.assistants.filter { it.str("trip_id") == trip.str("id") }.joinToString("، ") { name(it.str("user_id")) }
+                    TripLink("حملة ${index + 1} · ${name(trip.str("distributor_id"))}" + (if (helpers.isEmpty()) "" else " + $helpers"), "$state · ${formatMoney(total)}") { trip.str("id")?.let { nav.go(Screen.Trip(it)) } }
                 }
                 otherOpen.forEach { trip ->
                     TripLink("حملة مفتوحة بتاريخ ${trip.str("trip_date")} · ${name(trip.str("distributor_id"))}", "يجب إغلاقها قبل فتح حملة جديدة", highlighted = true) {
@@ -218,6 +227,8 @@ fun TripScreen(id: String) {
         PageTitle("${trip.obj("trucks")?.str("name") ?: ""} — ${trip.str("trip_date") ?: ""}", spacing = 20.dp)
         // The route lives on the map page (web: /map?trip=<id>).
         Btn("عرض خط السير", { nav.go(Screen.RouteMap(id)) }, variant = Variant.Outline, height = 44.dp)
+        trip.str("distributor_id")?.let { distributor -> Btn("ملف الموزع وحسابه", { nav.go(Screen.StaffProfile(distributor)) }, variant = Variant.Outline, height = 44.dp) }
+        TripAssistants(id, trip.str("distributor_id"), open = !closed, closingSent = closing != null)
         Banner(if (closed) Ice.muted else if (pendingLoads > 0) Ice.warning.copy(alpha = 0.3f) else Ice.success.copy(alpha = 0.15f)) {
             Text(
                 when {
@@ -373,6 +384,12 @@ private fun StockTable(rows: List<List<String>>, closed: Boolean) {
 
 private val CLOSING_STATUS = mapOf("submitted" to "بانتظار المراجعة", "approved" to "معتمد", "flagged" to "يحتاج مراجعة")
 
+/** e.g. "نقد 6,500 ر.ي · إيداع 5,000 ر.ي"; only the parts that are not zero. */
+internal fun handoverText(cash: Double, transfer: Double): String = listOfNotNull(
+    if (cash > 0 || transfer == 0.0) "نقد ${formatMoney(cash)}" else null,
+    if (transfer > 0) "إيداع ${formatMoney(transfer)}" else null,
+).joinToString(" · ")
+
 @Composable
 fun ClosingsScreen() {
     val repo = LocalRepo.current
@@ -380,9 +397,24 @@ fun ClosingsScreen() {
     val toast = rememberToast()
     val me by repo.me.collectAsState()
     val depositSupport by repo.depositSupport.collectAsState()
+    val handoverSupport by repo.handoverSupport.collectAsState()
+    val ledgerSupport by repo.ledgerSupport.collectAsState()
     var flagging by remember { mutableStateOf<String?>(null) }
+    var handovers by remember { mutableStateOf<List<DataRow>>(emptyList()) }
+    /** closing id → charged (true) or absorbed (false). */
+    var decisions by remember { mutableStateOf<Map<String, Boolean>>(emptyMap()) }
+    /** An approved shortage the supervisor is asked about right after approving it. */
+    var deciding by remember { mutableStateOf<String?>(null) }
 
-    val load = rememberLoaded(me?.id, depositSupport) { bearer ->
+    val load = rememberLoaded(me?.id, depositSupport, handoverSupport, ledgerSupport) { bearer ->
+        decisions = if (!ledgerSupport) emptyMap() else try {
+            repo.api.selectAll("pureice_shortage_decision", "select=closing_id,charged&order=closing_id", bearer)
+                .mapNotNull { row -> row.str("closing_id")?.let { it to (row.bool("charged") == true) } }.toMap()
+        } catch (e: ApiError) { emptyMap() } catch (e: IOException) { emptyMap() }
+        // How each closing's cash was handed over (optional feature, like deposits).
+        handovers = if (!handoverSupport) emptyList() else try {
+            repo.api.selectAll("pureice_closing_handover", "select=*&order=closing_id", bearer)
+        } catch (e: ApiError) { emptyList() } catch (e: IOException) { emptyList() }
         val closings = repo.api.selectAll("closings", "select=*,trips(trip_date,trucks(name))&order=created_at.desc,id", bearer)
         // Deposits are an optional feature: without them the closings still show.
         val deposits = if (!depositSupport) emptyList() else try {
@@ -391,9 +423,17 @@ fun ClosingsScreen() {
         closings to deposits
     }
 
-    fun review(id: String, status: String, note: String?) = operation.run {
+    fun review(id: String, status: String, note: String?, short: Boolean = false) = operation.run {
         repo.api.rpc("review_closing", buildJsonObject { put("p_id", id); put("p_status", status); put("p_note", note ?: "") }, repo.api.token())
         toast(if (status == "approved") "تم الاعتماد" else "أُعيد للموزع للتصحيح")
+        // A shortage is charged or absorbed once the closing is approved.
+        if (status == "approved" && short && ledgerSupport) deciding = id
+        load.reload()
+    }
+
+    fun decide(id: String, charge: Boolean) = operation.run {
+        repo.api.rpc("pureice_decide_shortage", buildJsonObject { put("p_closing", id); put("p_charge", charge); put("p_note", JsonNull) }, repo.api.token())
+        toast(if (charge) "أُضيف العجز إلى حساب الموزع" else "سُجّل العجز على الشركة")
         load.reload()
     }
 
@@ -404,7 +444,11 @@ fun ClosingsScreen() {
         if (load.error != null) LoadError(load.error, load.reload)
         // As on the web, the empty box also stands in while the list is loading.
         else if (data == null || data.first.isEmpty()) Empty("لا توجد إغلاقات")
-        else data.first.forEach { c ->
+        else {
+            val undecided = if (!ledgerSupport) 0 else data.first.count { it.str("status") == "approved" && it.num("difference") < 0 && it.str("id") !in decisions }
+            if (undecided > 0) Banner(Ice.warning.copy(alpha = 0.3f)) { Text("عجز بانتظار القرار: $undecided — اختر من يتحمل كل عجز معتمد.") }
+        }
+        if (data != null) data.first.forEach { c ->
             val closingId = c.str("id") ?: return@forEach
             val status = c.str("status")
             val deposits = data.second.filter { it.str("trip_id") != null && it.str("trip_id") == c.str("trip_id") }
@@ -435,13 +479,49 @@ fun ClosingsScreen() {
                     Text(formatMoney(deposits.sumOf { it.num("amount") }), style = T.sm.bold)
                 }
                 deposits.forEach { DepositSlipButton(it.str("slip_path")) }
+                if (handoverSupport) {
+                    val handover = handovers.firstOrNull { it.str("closing_id") == closingId }
+                    Text(
+                        "طريقة التسليم: " + if (handover == null) "لم تُحدد" else handoverText(handover.num("cash_amount"), handover.num("transfer_amount")),
+                        Modifier.padding(top = 4.dp), style = T.sm,
+                    )
+                    if (handover != null && handover.num("transfer_amount") > 0) DepositSlipButton(handover.str("slip_path"), "عرض إشعار الإيداع")
+                }
                 Text(formatDate(c.str("created_at")), Modifier.padding(top = 4.dp), style = T.xs.muted)
+                if (ledgerSupport && status == "approved" && c.num("difference") < 0) {
+                    when (decisions[closingId]) {
+                        true -> Text("العجز: على حساب الموزع", Modifier.padding(top = 4.dp), style = T.sm.bold.color(Ice.destructive))
+                        false -> Text("العجز: تتحمله الشركة", Modifier.padding(top = 4.dp), style = T.sm.muted)
+                        null -> Column(Modifier.padding(top = 8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Text("عجز بانتظار القرار: من يتحمله؟", style = T.sm.bold.color(Ice.destructive))
+                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                SmallBtn("تحميل العجز على الموزع", { decide(closingId, true) }, Modifier.weight(1f), Variant.Destructive, enabled = !operation.busy)
+                                SmallBtn("تتحمله الشركة", { decide(closingId, false) }, Modifier.weight(1f), Variant.Outline, enabled = !operation.busy)
+                            }
+                        }
+                    }
+                }
                 if (status == "submitted") Row(Modifier.padding(top = 12.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    SmallBtn("اعتماد", { review(closingId, "approved", null) }, Modifier.weight(1f), enabled = !operation.busy)
+                    SmallBtn("اعتماد", { review(closingId, "approved", null, c.num("difference") < 0) }, Modifier.weight(1f), enabled = !operation.busy)
                     SmallBtn("يحتاج مراجعة", { flagging = closingId }, Modifier.weight(1f), Variant.Destructive, enabled = !operation.busy)
                 }
             }
         }
+    }
+
+    deciding?.let { closingId ->
+        val short = load.data?.first?.firstOrNull { it.str("id") == closingId }?.num("difference")?.let { -it } ?: 0.0
+        AlertDialog(
+            onDismissRequest = { deciding = null },
+            text = { Text("في هذا الإغلاق عجز ${formatMoney(short)}. من يتحمل العجز؟") },
+            confirmButton = { TextButton({ deciding = null; decide(closingId, true) }) { Text("تحميل العجز على الموزع") } },
+            dismissButton = {
+                Row {
+                    TextButton({ deciding = null; decide(closingId, false) }) { Text("تتحمله الشركة") }
+                    TextButton({ deciding = null }) { Text("لاحقاً") }
+                }
+            },
+        )
     }
 
     flagging?.let { closingId ->

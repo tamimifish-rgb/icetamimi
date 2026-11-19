@@ -1,0 +1,42 @@
+{
+ "tables": {
+  "customers": [
+   {
+    "id": "c3",
+    "name": "بقالة الأمل",
+    "phone": null,
+    "region_id": "r1",
+    "credit_limit": 0,
+    "active": true,
+    "truck_id": "t1",
+    "location_notes": null,
+    "lat": 14.531,
+    "lng": 49.121
+   },
+   {
+    "id": "c4",
+    "name": "مخبز السلام",
+    "phone": null,
+    "region_id": "r1",
+    "credit_limit": 0,
+    "active": true,
+    "truck_id": "t1",
+    "location_notes": null,
+    "lat": 14.536,
+    "lng": 49.128
+   },
+   {
+    "id": "c5",
+    "name": "كافتيريا الميناء",
+    "phone": null,
+    "region_id": "r1",
+    "credit_limit": 0,
+    "active": true,
+    "truck_id": "t1",
+    "location_notes": null,
+    "lat": 14.542,
+    "lng": 49.133
+   }
+  ]
+ }
+}

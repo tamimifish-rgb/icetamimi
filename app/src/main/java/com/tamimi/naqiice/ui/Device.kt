@@ -180,6 +180,41 @@ object Photos {
             out.absolutePath
         }.getOrNull()
     }
+
+    /** What happened to a picked document. */
+    sealed interface Imported {
+        data class Saved(val path: String) : Imported
+        data object TooLarge : Imported
+        data object Failed : Imported
+    }
+
+    const val MAX_DOCUMENT_BYTES = 10 * 1024 * 1024
+
+    /** Copies a picked PDF into app storage unchanged, refusing one larger than 10 MB. */
+    suspend fun importPdf(context: Context, source: Uri): Imported = withContext(Dispatchers.IO) {
+        runCatching {
+            val out = File(dir(context), "${UUID.randomUUID()}.pdf")
+            val copied = context.contentResolver.openInputStream(source)?.use { input ->
+                out.outputStream().use { output ->
+                    val buffer = ByteArray(64 * 1024)
+                    var total = 0L
+                    while (true) {
+                        val n = input.read(buffer)
+                        if (n < 0) break
+                        total += n
+                        if (total > MAX_DOCUMENT_BYTES) return@use -1L
+                        output.write(buffer, 0, n)
+                    }
+                    total
+                }
+            }
+            when {
+                copied == null -> { out.delete(); Imported.Failed }
+                copied < 0 -> { out.delete(); Imported.TooLarge }
+                else -> Imported.Saved(out.absolutePath)
+            }
+        }.getOrElse { Imported.Failed }
+    }
 }
 
 /** Saves a camera capture or a gallery pick on the phone and reports its path. */
@@ -245,6 +280,39 @@ fun DepositPhoto(path: String?, onChange: (String?) -> Unit) {
         Text("صورة إيصال الإيداع (مطلوبة)", style = T.sm)
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             listOf("الكاميرا" to openCamera, "معرض الصور" to openGallery).forEach { (label, open) ->
+                Box(Modifier.heightIn(min = 44.dp).border(1.dp, Ice.input, RoundedCornerShape(Radius.md)).tap(onClick = open).padding(horizontal = 12.dp), contentAlignment = Alignment.Center) {
+                    Text(label, style = T.sm)
+                }
+            }
+        }
+        if (path != null) Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text(File(path).name, style = T.sm, modifier = Modifier.weight(1f, fill = false))
+            Btn("إزالة", { onChange(null) }, variant = Variant.Ghost, height = 32.dp, style = T.xs.medium)
+        }
+    }
+}
+
+/** A deposit or transfer slip: a photo from the camera or the gallery, or a PDF file. */
+@Composable
+fun SlipPick(path: String?, onChange: (String?) -> Unit) {
+    val (openCamera, openGallery) = rememberPhotoSource(onChange)
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    val toast = rememberToast()
+    val pdf = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri != null) scope.launch {
+            when (val result = Photos.importPdf(context, uri)) {
+                is Photos.Imported.Saved -> onChange(result.path)
+                Photos.Imported.TooLarge -> toast("الملف أكبر من 10 ميجابايت")
+                Photos.Imported.Failed -> toast("تعذّر حفظ الملف")
+            }
+        }
+    }
+    val openPdf = { runCatching { pdf.launch(arrayOf("application/pdf")) }; Unit }
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Text("إشعار الإيداع أو الحوالة: صورة أو ملف PDF (مطلوب)", style = T.sm)
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            listOf("الكاميرا" to openCamera, "معرض الصور" to openGallery, "ملف PDF" to openPdf).forEach { (label, open) ->
                 Box(Modifier.heightIn(min = 44.dp).border(1.dp, Ice.input, RoundedCornerShape(Radius.md)).tap(onClick = open).padding(horizontal = 12.dp), contentAlignment = Alignment.Center) {
                     Text(label, style = T.sm)
                 }

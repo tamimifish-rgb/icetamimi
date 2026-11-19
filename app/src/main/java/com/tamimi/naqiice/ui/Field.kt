@@ -1,5 +1,8 @@
 package com.tamimi.naqiice.ui
 
+import com.tamimi.naqiice.core.handoverError
+import com.tamimi.naqiice.core.handoverAmounts
+import com.tamimi.naqiice.core.HandoverMethod
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
@@ -255,12 +258,18 @@ fun ClosingScreen() {
     val snap by repo.snapshot.collectAsState()
     val me by repo.me.collectAsState()
     val changeSupport by repo.changeSupport.collectAsState()
+    val handoverSupport by repo.handoverSupport.collectAsState()
     val operation = rememberOperation()
     val toast = rememberToast()
     var counted by remember { mutableStateOf("") }
     var notes by remember { mutableStateOf("") }
     var confirm by remember { mutableStateOf(false) }
     var waitingChanges by remember { mutableStateOf(0) }
+    var method by remember { mutableStateOf(HandoverMethod.Cash) }
+    var transferText by remember { mutableStateOf("") }
+    var slip by remember { mutableStateOf<String?>(null) }
+    // Records the assistant made offline cannot reach the server once the closing is sent.
+    var assistantSynced by remember { mutableStateOf(false) }
     val tripId = snap.tripId
 
     LaunchedEffect(tripId, changeSupport) {
@@ -270,6 +279,7 @@ fun ClosingScreen() {
 
     if (snap.trip == null) { Empty("لا توجد حملة مفتوحة."); return }
     val flagged = snap.closing?.str("status") == "flagged"
+    if (snap.isAssistant) { Empty("الإغلاق يرسله الموزع الرئيسي للحملة. سلّم له النقد الذي معك: ${formatMoney(snap.cashHeldBy(me?.id))}."); return }
     if (!flagged && snap.closingSent) { Empty("تم إرسال إغلاق الحملة بالفعل."); return }
     val day = snap.day
     val c = parseNumber(counted)
@@ -278,15 +288,34 @@ fun ClosingScreen() {
     fun send() = operation.run { operationId ->
         val user = me
         if (user == null || !snap.ownOpenTrip(user.id)) throw Notice("تحتاج حملة مفتوحة معينة لك")
+        if (!snap.canCloseOrApprove) throw Notice("الإغلاق يرسله الموزع الرئيسي للحملة")
         if ((snap.closing != null && !flagged) || snap.closingQueued) throw Notice("تم إرسال إغلاق الحملة؛ الحفظ متوقف")
+        if (snap.assistants.isNotEmpty() && !assistantSynced) throw Notice("أكّد أن جوال المساعد رفع كل فواتيره وأنك استلمت نقده")
         if (counted.isEmpty()) throw Notice("أدخل النقد المعدود")
         if (!c.isFinite() || c < 0) throw Notice("النقد المعدود غير صحيح")
+        val transfer = if (transferText.isEmpty()) 0.0 else parseNumber(transferText)
+        if (handoverSupport) handoverError(c, method, transfer, slip != null)?.let { throw Notice(it) }
         // A returned closing is corrected under its original id.
         val id = if (flagged) snap.closing?.str("id") ?: operationId else operationId
         repo.enqueue("closing", buildJsonObject {
             put("id", id); put("trip_id", tripId); put("expected_cash", jnum(day.expected)); put("counted_cash", jnum(c))
             put("difference", jnum(difference)); put("notes", jstr(notes.ifEmpty { null })); put("created_by", user.id); put("created_at", isoNow())
         })
+        if (handoverSupport) {
+            val (cash, deposit) = handoverAmounts(c, method, transfer)
+            val handoverId = java.util.UUID.randomUUID().toString()
+            val file = slip.takeIf { deposit > 0 }
+            val pdf = file?.endsWith(".pdf") == true
+            repo.enqueue("closing_handover", buildJsonObject {
+                put("id", handoverId); put("closing_id", id); put("trip_id", tripId)
+                put("cash_amount", jnum(cash)); put("transfer_amount", jnum(deposit))
+                if (file != null) {
+                    put("slip_path", "${user.id}/handover-$handoverId.${if (pdf) "pdf" else "jpg"}"); put("slip_blob", file)
+                    put("slip_type", if (pdf) "application/pdf" else "image/jpeg")
+                } else put("slip_path", JsonNull)
+                put("created_by", user.id); put("created_at", isoNow())
+            })
+        }
         toast("تم إرسال الإغلاق للمشرف")
         nav.back()
     }
@@ -319,12 +348,32 @@ fun ClosingScreen() {
             }
             Text("يسجّل المشرف المرتجع والتالف عند وصولك للمصنع.", style = T.xs.muted, modifier = Modifier.padding(top = 4.dp))
         }
+        if (snap.assistants.isNotEmpty()) Banner(Ice.warning.copy(alpha = 0.2f)) {
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                Text("رفع جوال المساعد كل فواتيره (متصل، ولا شيء بانتظار الرفع) واستلمت نقده. بعد الإغلاق لا تُرفع فواتيره.", Modifier.weight(1f), style = T.sm)
+                Toggle(assistantSynced) { assistantSynced = it }
+            }
+        }
         Field(counted, { counted = it }, "النقد المعدود فعلياً", numeric = true, large = true)
         if (counted.isNotEmpty()) Banner(if (difference == 0.0) Ice.success.copy(alpha = 0.15f) else Ice.destructive.copy(alpha = 0.1f)) {
             Text(
                 "الفرق: ${formatMoney(difference)} " + if (difference < 0) "(عجز)" else if (difference > 0) "(زيادة)" else "✓",
                 Modifier.fillMaxWidth(), style = T.base.bold.color(if (difference == 0.0) Ice.success else Ice.destructive), textAlign = TextAlign.Center,
             )
+        }
+        if (handoverSupport) Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text("طريقة تسليم النقد", style = T.sm)
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                listOf(HandoverMethod.Cash to "نقد", HandoverMethod.Transfer to "إيداع/حوالة", HandoverMethod.Both to "الاثنان").forEach { (m, label) ->
+                    Btn(label, { method = m }, Modifier.weight(1f), if (method == m) Variant.Default else Variant.Outline, height = 44.dp, style = T.xs.medium)
+                }
+            }
+            if (method == HandoverMethod.Both) {
+                Field(transferText, { transferText = it }, "مبلغ الإيداع أو الحوالة", numeric = true)
+                val (cash, _) = handoverAmounts(c, method, if (transferText.isEmpty()) 0.0 else parseNumber(transferText))
+                if (counted.isNotEmpty() && transferText.isNotEmpty()) Text("الباقي نقداً: ${formatMoney(cash)}", style = T.sm.muted)
+            }
+            if (method != HandoverMethod.Cash) SlipPick(slip) { slip = it }
         }
         Field(notes, { notes = it }, "ملاحظات")
         BigButton("إرسال الإغلاق", enabled = !operation.busy) { if (flagged || counted.isEmpty()) send() else confirm = true }

@@ -45,6 +45,16 @@ class Fixture(private val base: JsonObject) : Interceptor {
         @Volatile var role = "distributor"
         /** Returnable boxes are a native-only feature: off unless a test turns the server feature on. */
         @Volatile var boxes = false
+        /** Three more customers, all with a saved location, for the distributor's customer map. */
+        @Volatile var customerMap = false
+        /** The closing-handover server feature (cash / deposit / both at closing). */
+        @Volatile var handover = false
+        /** The staff account: shortage decisions and salary deductions. */
+        @Volatile var staffLedger = false
+        /** Truck service plans and problem reports. */
+        @Volatile var truckCare = false
+        /** Assistant distributors: null off; "assistant": the owner assists sup-d2's campaign; "main": he leads it with sup-d7. */
+        @Volatile var assistant: String? = null
         /** Every write the app sent: "POST /rest/v1/rpc/pureice_box_move {…}". */
         val writes = java.util.concurrent.CopyOnWriteArrayList<String>()
         private fun merge(into: JsonObject, extra: JsonObject): JsonObject {
@@ -62,12 +72,23 @@ class Fixture(private val base: JsonObject) : Interceptor {
     }
 
     private val withBoxes by lazy { merge(base, parseObject(File("src/test/fixtures/boxes.json").readText())) }
-    private val data: JsonObject get() = if (boxes) withBoxes else base
+    private val withCustomerMap by lazy { merge(base, parseObject(File("src/test/fixtures/customer-map.json").readText())) }
+    private val withHandover by lazy { merge(base, parseObject(File("src/test/fixtures/closing-handover.json").readText())) }
+    private val withTruckCare by lazy { merge(base, parseObject(File("src/test/fixtures/truck-care.json").readText())) }
+    private val withStaffLedger by lazy { merge(base, parseObject(File("src/test/fixtures/staff-ledger.json").readText())) }
+    private val withAssistant by lazy { merge(base, parseObject(File("src/test/fixtures/trip-assistants.json").readText())) }
+    private val withMainAndAssistant by lazy {
+        val trip = base.obj("tables")!!.rows("trips").first { it.str("id") == FX_TRIP }
+        val mine = buildJsonObject { put("trip", trip); put("role", "main"); put("assistants", JsonArray(listOf(JsonPrimitive("sup-d7")))) }
+        withAssistant.with("rpc" to JsonObject(withAssistant.obj("rpc")!! + ("pureice_my_open_trip" to mine)))
+    }
+    private val data: JsonObject get() = if (assistant == "assistant") withAssistant else if (assistant == "main") withMainAndAssistant else if (boxes) withBoxes else if (customerMap) withCustomerMap else if (handover) withHandover else if (staffLedger) withStaffLedger else if (truckCare) withTruckCare else base
 
     private fun tables(): Map<String, List<Row>> {
         val owner = data.str("owner")
         val all = data.obj("tables")!!.mapValues { it.value.asRows() }.toMutableMap()
-        all["user_roles"] = listOf(buildJsonObject { put("user_id", owner); put("role", role) })
+        // The signed-in account's role as the test sets it; other accounts' roles come from the fixtures.
+        all["user_roles"] = (all["user_roles"] ?: emptyList()).filter { it.str("user_id") != owner } + buildJsonObject { put("user_id", owner); put("role", role) }
         all["profiles"] = (all["profiles"] ?: emptyList()).map { if (it.str("id") == owner && role != "distributor") it.with("full_name" to JsonPrimitive("المدير")) else it }
         return all
     }

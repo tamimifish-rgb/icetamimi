@@ -140,18 +140,19 @@ class TrackingService : Service(), LocationListener {
         @Volatile var visible = false
 
         /**
-         * Tracks only a distributor's own open campaign that has no closing sent; stops
-         * for every other state (sign-out, closing, campaign closed, another role).
+         * Tracks only a distributor's own open campaign that has no closing sent, and only on
+         * the main distributor's phone (one tracker per truck, never an assistant's); stops for
+         * every other state (sign-out, closing, campaign closed, another role).
          */
         fun update(context: Context, repo: Repo) {
             val me = repo.me.value
             val snapshot = repo.snapshot.value
             val trip = snapshot.trip
-            val wanted = me != null && me.primaryRole == "distributor" && snapshot.ownOpenTrip(me.id) && !snapshot.closingSent && Locations.granted(context)
+            val wanted = me != null && me.primaryRole == "distributor" && snapshot.ownOpenTrip(me.id) && snapshot.canCloseOrApprove && !snapshot.closingSent && Locations.granted(context)
             if (!wanted) {
                 startedFor = null
                 if (running) context.stopService(Intent(context, TrackingService::class.java))
-                if (me == null || trip == null || snapshot.closingSent) repo.tracking.value = null
+                if (me == null || trip == null || snapshot.closingSent || !snapshot.canCloseOrApprove) repo.tracking.value = null
                 else if (me.primaryRole == "distributor" && !Locations.granted(context)) repo.tracking.value = TrackingState(me.id, snapshot.tripId ?: "", "denied", null)
                 return
             }

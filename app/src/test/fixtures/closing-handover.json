@@ -1,0 +1,18 @@
+{
+ "rpc": {
+  "pureice_closing_handover_support": 1,
+  "pureice_save_closing_handover": {}
+ },
+ "tables": {
+  "pureice_closing_handover": [
+   {
+    "closing_id": "sup-cl-e",
+    "trip_id": "sup-trip-e",
+    "cash_amount": 6500,
+    "transfer_amount": 5000,
+    "slip_path": "sup-d5/handover-h1.pdf",
+    "created_by": "sup-d5"
+   }
+  ]
+ }
+}

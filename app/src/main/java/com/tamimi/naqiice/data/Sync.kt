@@ -197,6 +197,36 @@ class SyncEngine(
             return null
         }
 
+        if (op.kind == "truck_issue") {
+            if (p.str("id") != op.id || p.str("created_by") != op.ownerId) throw IllegalStateException("تعارض معرف أو مالك السجل")
+            val path = p.str("photo_path")
+            if (path != null && !path.startsWith("${op.ownerId}/")) throw IllegalStateException("الصورة تخص حساباً آخر")
+            if (path != null) p.str("photo_blob")?.let { file -> readFile(file)?.let { remote.upload(bucket, path, it, "image/jpeg", bearer) } }
+            assertOwner(op.ownerId)
+            remote.rpc("pureice_report_truck_issue", buildJsonObject { put("p_request", p.without("photo_blob", "created_by", "created_at")) }, bearer)
+            assertOwner(op.ownerId)
+            return null
+        }
+
+        if (op.kind == "closing_handover") {
+            val closingId = p.str("closing_id")
+            if (p.str("id") != op.id || p.str("created_by") != op.ownerId || closingId == null) throw IllegalStateException("تعارض معرف أو مالك السجل")
+            // The server only takes a handover for a closing it already holds.
+            store.getOp(closingId)?.let { if (it.state != "acknowledged" && it.state != "reconciled") throw IllegalStateException("بانتظار رفع الإغلاق") }
+            val path = p.str("slip_path")
+            if (p.num("transfer_amount") > 0 && (path == null || !path.startsWith("${op.ownerId}/"))) throw IllegalStateException("إشعار الإيداع مطلوب ويخص هذا الحساب")
+            val type = if (p.str("slip_type") == "application/pdf") "application/pdf" else "image/jpeg"
+            if (path != null) p.str("slip_blob")?.let { file -> readFile(file)?.let { remote.upload(bucket, path, it, type, bearer) } }
+            assertOwner(op.ownerId)
+            val request = buildJsonObject {
+                put("closing_id", closingId); put("cash_amount", p["cash_amount"] ?: JsonNull)
+                put("transfer_amount", p["transfer_amount"] ?: JsonNull); put("slip_path", p["slip_path"] ?: JsonNull)
+            }
+            remote.rpc("pureice_save_closing_handover", buildJsonObject { put("p_request", request) }, bearer)
+            assertOwner(op.ownerId)
+            return null
+        }
+
         if (p.str("payment_method") == "deposit") {
             val path = p.str("deposit_slip_path")
             if (path == null || !path.startsWith("${op.ownerId}/")) throw IllegalStateException("صورة إيصال الإيداع مطلوبة وتخص هذا الحساب")
@@ -255,7 +285,8 @@ class SyncEngine(
         var sent = 0
         var failed = 0
         try {
-            fun rank(op: OutboxOp) = when (op.kind) { "customer" -> -1; "closing" -> 1; else -> 0 }
+            // A handover follows its closing.
+            fun rank(op: OutboxOp) = when (op.kind) { "customer" -> -1; "closing" -> 1; "closing_handover" -> 2; else -> 0 }
             val ops = store.outboxFor(ownerId).filter { it.state == "queued" || it.state == "blocked" }
                 .sortedWith(compareBy<OutboxOp> { rank(it) }.thenBy { it.createdAt })
             val blockedCustomers = HashSet<String>()
@@ -337,6 +368,8 @@ class SyncEngine(
         guard()
         // Listed before any read: whatever these uploads changed is in the rows fetched below.
         val sideSent = store.outboxFor(userId).filter { it.kind in SIDE_KINDS && it.state == "acknowledged" }
+        val handoversSent = store.outboxFor(userId).filter { it.kind == "closing_handover" && it.state == "acknowledged" }
+        val issuesSent = store.outboxFor(userId).filter { it.kind == "truck_issue" && it.state == "acknowledged" }
         val recordsSent = store.outboxFor(userId).filter { it.kind in recordTables && it.state == "acknowledged" }
         val variants = remote.selectAll("product_variants", "select=*,products(name,active,sort)&active=eq.true&order=sort,id", bearer)
         val regions = remote.selectAll("regions", "select=*&active=eq.true&order=sort,id", bearer)
@@ -347,8 +380,18 @@ class SyncEngine(
         val trucks = remote.selectAll("trucks", "select=*&order=code,id", bearer)
         guard()
 
-        // Assigned campaign only; no profile-truck fallback.
-        val trip = remote.select("trips", "select=*&distributor_id=eq.$userId&status=neq.closed&order=created_at.desc&limit=1", bearer).firstOrNull()
+        // Assigned campaign only; no profile-truck fallback. With assistants on the server, it says
+        // which campaign (one he leads, else one he assists) and his role on it.
+        val assistantSupport = supported("pureice_trip_assistant_support", bearer)
+            ?: throw IllegalStateException("تعذّر تحديث الحملة")
+        val mine = if (assistantSupport) remote.rpc("pureice_my_open_trip", JsonObject(emptyMap()), bearer) as? JsonObject else null
+        val trip = if (assistantSupport) mine?.obj("trip")
+            else remote.select("trips", "select=*&distributor_id=eq.$userId&status=neq.closed&order=created_at.desc&limit=1", bearer).firstOrNull()
+        val tripRole = when {
+            trip == null -> null
+            assistantSupport -> mine?.str("role")
+            else -> "main"
+        }
         guard()
         val tripId = trip?.str("id")
         val unapprovedLoads = if (tripId != null) remote.selectAll("trip_loads", "select=*&trip_id=eq.$tripId&approved_at=is.null&order=id", bearer) else emptyList()
@@ -382,6 +425,38 @@ class SyncEngine(
         if (boxSupport == true) for ((kind, table) in listOf("box_move" to "pureice_box_events", "customer_location" to "pureice_customer_locations")) {
             for (ids in sideSent.filter { it.kind == kind }.map { it.id }.chunked(40)) {
                 remote.select(table, "select=id&id=in.(${ids.joinToString(",")})", bearer).mapNotNullTo(sideEvidence) { it.str("id") }
+            }
+        }
+        // A truck problem report is cleared once the server holds its UUID.
+        val issueEvidence = HashSet<String>()
+        if (issuesSent.isNotEmpty() && supported("pureice_truck_care_support", bearer) == true) {
+            for (ids in issuesSent.map { it.id }.chunked(40)) {
+                remote.select("pureice_truck_issues", "select=id&id=in.(${ids.joinToString(",")})", bearer).mapNotNullTo(issueEvidence) { it.str("id") }
+            }
+            // A distributor reads only the reports of his current campaign's truck. The server took a
+            // report for another truck (acknowledged = its function returned the row), so it is done.
+            val currentTruck = trip?.str("truck_id")
+            issuesSent.filter { it.payload.str("truck_id") != currentTruck }.mapTo(issueEvidence) { it.id }
+        }
+        // A handover is cleared when the server holds exactly what it sent; an earlier request is
+        // also cleared by a later correction of the same closing that the server holds. An earlier
+        // request's values never clear a later one.
+        val handoverEvidence = HashSet<String>()
+        if (handoversSent.isNotEmpty() && supported("pureice_closing_handover_support", bearer) == true) {
+            for (chunk in handoversSent.chunked(40)) {
+                val rows = remote.select("pureice_closing_handover", "select=closing_id,cash_amount,transfer_amount,slip_path&closing_id=in.(${chunk.mapNotNull { it.payload.str("closing_id") }.joinToString(",")})", bearer)
+                for (op in chunk) {
+                    val row = rows.firstOrNull { it.str("closing_id") == op.payload.str("closing_id") } ?: continue
+                    if (row.num("cash_amount") == op.payload.num("cash_amount") && row.num("transfer_amount") == op.payload.num("transfer_amount") &&
+                        row.str("slip_path") == op.payload.str("slip_path")) handoverEvidence.add(op.id)
+                }
+            }
+            // An earlier request the server took is done once a later correction of the same closing
+            // is held exactly: the server keeps one handover per closing.
+            // handoversSent keeps the outbox order (oldest first).
+            handoversSent.forEachIndexed { i, op ->
+                val closing = op.payload.str("closing_id")
+                if (handoversSent.drop(i + 1).any { it.id in handoverEvidence && it.payload.str("closing_id") == closing }) handoverEvidence.add(op.id)
             }
         }
         guard()
@@ -423,6 +498,8 @@ class SyncEngine(
             put("models", JsonArray(models))
             put("trucks", JsonArray(trucks))
             put("trip", trip ?: JsonNull)
+            put("tripRole", tripRole)
+            put("assistants", (mine?.get("assistants") as? JsonArray) ?: JsonArray(emptyList()))
             put("stock", accounting["stock"].orNull() ?: JsonArray(emptyList()))
             put("unapprovedLoads", JsonArray(unapprovedLoads))
             put("salesToday", JsonArray(accounting.rows("sales").map { withDeposit(it, deposit("sale", it.str("id"))) }))
@@ -442,6 +519,8 @@ class SyncEngine(
                 val uploaded = op.state == "acknowledged" && when (op.kind) {
                     "customer" -> true
                     in SIDE_KINDS -> op.id in sideEvidence
+                    "closing_handover" -> op.id in handoverEvidence
+                    "truck_issue" -> op.id in issueEvidence
                     else -> op.id in included || op.id in recordEvidence
                 }
                 val redundant = op.state == "reconciled" && closingEvidence.containsKey(op.id)

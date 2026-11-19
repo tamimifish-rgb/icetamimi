@@ -7,6 +7,10 @@ The app talks to the live "Tamimi Ice" Supabase project. Its base schema lives w
 |---|---|---|
 | `90-boxes-and-customer-location.sql` | Returnable box tracking (`pureice_boxes`, `pureice_box_events`, `pureice_box_variants`, `pureice_box_move`, `pureice_box_add`) and customer location capture (`pureice_customer_locations`, `pureice_set_customer_location`) | `pureice_box_support()` |
 | `91-performance.sql` | Speed only: `trip_id` indexes on `gps_points`, `payments` and `expenses`, and the 38 access rules on the 10 busiest tables rewritten to check the signed-in user once per query instead of once per row. Undone by `91-performance-rollback.sql` | — (no behaviour change) |
+| `92-closing-handover.sql` | How a closing's counted cash reaches the company: cash, deposit/transfer, or both, with the slip (`pureice_closing_handover`, `pureice_save_closing_handover`) | `pureice_closing_handover_support()` |
+| `93-staff-ledger.sql` | Each employee's account: who carries an approved closing's shortage (`pureice_shortage_decision`, `pureice_decide_shortage`) and charged shortages, salary deductions and adjustments (`pureice_staff_ledger`, `pureice_add_staff_entry`) | `pureice_staff_ledger_support()` |
+| `94-truck-care.sql` | Truck service plans and recorded services (managers), the truck's current odometer, and problem reports from distributors followed from open to fixed (`pureice_truck_service_plan`, `pureice_truck_services`, `pureice_truck_issues` and their functions) | `pureice_truck_care_support()` |
+| `95-trip-assistants.sql` | Assistant distributors on a campaign (`pureice_trip_assistants`, `pureice_set_trip_assistant`, `pureice_my_open_trip`); **changes eight existing functions** (main distributor → main or assistant) and adds a deposits read policy for campaign members. Undo: `95-trip-assistants-rollback.sql` | `pureice_trip_assistant_support()` |
 
 Rules these files follow:
 
@@ -64,4 +68,84 @@ supervisor, two distributors, a deactivated distributor and an unknown account e
 (as themselves and as someone else), updated and deleted on every table, plus the flagged-closing
 resubmit: 312 results, identical before the script, after it and after the rollback. The rollback
 restores every rule's text exactly.
+
+## 92-closing-handover.sql
+
+Applied to the live project on 2026-11-19 as migration `pureice_closing_handover`, after the owner
+approved it. Tests: `backend/test/run.sh backend/92-closing-handover.sql`, 25 checks covering every
+account kind, including sums that don't add up, missing or foreign slips, approved closings and
+repeated requests.
+
+Checked on the live project after applying, in a rolled-back transaction:
+- a real distributor gets `1` from the support function;
+- a change to his approved closing is refused;
+- a supervisor cannot write a distributor's handover;
+- both see only the rows they should.
+
+The security advisor's only new entries are the two functions, listed under "signed-in users can
+execute a SECURITY DEFINER function". That is intended: both check the caller themselves.
+
+`backend/test/` is the harness for every script from 92 on:
+- `stub-schema.sql` holds the live helper functions and the tables these scripts touch;
+- `run.sh` starts a throwaway Postgres 16, applies one script, and runs its `.test.sql` as each kind of account.
+
+## 93-staff-ledger.sql
+
+Applied to the live project on 2026-11-19 as migration `pureice_staff_ledger`, after the owner
+approved it. Tests: `backend/test/run.sh backend/93-staff-ledger.sql`, 36 checks.
+
+Checked on the live project after applying, in a rolled-back transaction that left no rows behind:
+- a real distributor gets `1` from the support function, cannot decide a shortage, and sees only his own entries;
+- a real supervisor can charge a real approved shortage, but cannot charge an even closing or record a salary deduction (admin only).
+
+Four approved closings were short and waited for a decision at that point. The security advisor's
+only new entries are the three functions, as intended.
+
+## 94-truck-care.sql
+
+Applied to the live project on 2026-11-19 as migration `pureice_truck_care`, after the owner
+approved it. Tests: `backend/test/run.sh backend/94-truck-care.sql`, 39 checks.
+
+Checked on the live project after applying, in a rolled-back transaction that left no rows behind:
+- a real distributor gets `1` from the support function, reads his own truck's odometer but not another truck's, can report a problem for his own truck, cannot set a service plan, and sees only his own truck's reports;
+- a real supervisor can set a plan and read any truck's odometer.
+
+The security advisor's only new entries are the seven functions, as intended.
+
+Services recorded by managers are kept in `pureice_truck_services`, not `maintenance_jobs`: a
+maintenance job must belong to an open campaign. Reports' maintenance and profit tabs do not include
+them yet.
+
+## 95-trip-assistants.sql
+
+Applied to the live project on 2026-11-19 as migration `pureice_trip_assistants`, after the owner
+approved it. Tests: `backend/test/run.sh backend/95-trip-assistants.sql`: 57 checks, then 7 after
+`95-trip-assistants-rollback.sql` restores the original functions. The stub
+`backend/test/95-trip-assistants.stub.sql` holds the live tables and functions the script changes or
+calls, copied verbatim from the live project.
+
+Unlike 90–94 this script changes existing functions: `finance_trip_scope`, `finance_customer_scope`,
+`finance_lock_trip`, `finance_field_scope_backstop`, `finance_guard_customer`, `save_invoice`,
+`pureice_box_move` and `pureice_my_truck` (from 94). Each change is one condition ("the campaign's
+distributor" → "the campaign's distributor or one of its assistants"); the rest of each function is
+the live definition, copied before applying and confirmed unchanged by checksum just before. With no
+assistant added they behave as before. `approve_trip_loads`, `guard_trip_loads` and `submit_closing`
+keep their own main-distributor checks. One read policy is added on `pureice_deposits`
+(`campaign_member_read`), so both phones see the campaign's deposits.
+
+Checked on the live project after applying:
+- the twelve new and changed function bodies match the tested ones exactly (md5 of each body);
+- in a rolled-back transaction with a real open campaign, its distributor, a free distributor and a
+  supervisor: the distributor cannot add an assistant; the supervisor can; the assistant gets `1`
+  from the support function, finds the campaign as `assistant`, reads it, its truck and all 13 of its
+  sales, may write field records (as `save_invoice` runs it), cannot approve the load or send the
+  closing, and cannot call the membership helper; another distributor cannot write on the campaign;
+  the main distributor finds it as `main` with the assistant listed; after removal the assistant no
+  longer reads it. No rows were left behind.
+
+The security advisor's only new entries are the three functions the app calls
+(`pureice_trip_assistant_support`, `pureice_my_open_trip`, `pureice_set_trip_assistant`).
+
+Not covered: a manager can still open a new campaign for a distributor who assists another open
+campaign (`guard_trips` is unchanged). His phone then finds the campaign he leads first.
 

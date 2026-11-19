@@ -5,6 +5,7 @@ import com.tamimi.naqiice.core.bool
 import com.tamimi.naqiice.core.boxMoveRequest
 import com.tamimi.naqiice.core.boxStatusAfter
 import com.tamimi.naqiice.core.num
+import com.tamimi.naqiice.core.obj
 import com.tamimi.naqiice.core.rows
 import com.tamimi.naqiice.core.strings
 import com.tamimi.naqiice.core.with
@@ -53,6 +54,15 @@ private class FakeServer : Remote {
     var boxSupport: Boolean? = false
     var failBoxMove = false
     var failLocation = false
+    /** true: the closing-handover feature is live on the server. */
+    var handoverSupport = false
+    /** true: truck service plans and problem reports are live on the server. */
+    var truckCareSupport = false
+    /** true: assistant distributors are live; [myOpenTrip] is what pureice_my_open_trip answers. */
+    var assistantSupport = false
+    var myOpenTrip: JsonElement = JsonNull
+    var snapshotTrip: String? = null
+    val uploadTypes = HashMap<String, String>()
 
     fun table(name: String) = tables.getOrPut(name) { ArrayList() }
 
@@ -104,6 +114,7 @@ private class FakeServer : Remote {
                 return JsonNull
             }
             "accounting_snapshot" -> return buildJsonObject {
+                snapshotTrip = args.str("p_trip")
                 put("includedIds", JsonArray(included.map { JsonPrimitive(it) }))
                 put("balances", buildJsonArray { add(buildJsonObject { put("customer_id", "c1"); put("balance", 2000) }) })
                 put("stock", buildJsonArray { add(buildJsonObject { put("variant_id", "v1"); put("loaded", 100); put("sold", 10); put("returned", 0); put("damaged", 0) }) })
@@ -130,6 +141,23 @@ private class FakeServer : Remote {
                 }
                 return JsonNull
             }
+            "pureice_trip_assistant_support" -> if (assistantSupport) return JsonPrimitive(1) else throw ApiError(404, "PGRST202", "missing")
+            "pureice_my_open_trip" -> return myOpenTrip
+            "pureice_truck_care_support" -> if (truckCareSupport) return JsonPrimitive(1) else throw ApiError(404, "PGRST202", "missing")
+            "pureice_report_truck_issue" -> {
+                val request = args["p_request"] as JsonObject
+                if (table("pureice_truck_issues").none { it.str("id") == request.str("id") }) table("pureice_truck_issues").add(request)
+                return request
+            }
+            "pureice_closing_handover_support" -> if (handoverSupport) return JsonPrimitive(1) else throw ApiError(404, "PGRST202", "missing")
+            "pureice_save_closing_handover" -> {
+                val request = args["p_request"] as JsonObject
+                val closing = table("closings").firstOrNull { it.str("id") == request.str("closing_id") } ?: throw ApiError(400, "42501", "الإغلاق ليس لهذا الحساب")
+                if (request.num("cash_amount") + request.num("transfer_amount") != closing.num("counted_cash")) throw ApiError(400, "22023", "mismatch")
+                table("pureice_closing_handover").removeAll { it.str("closing_id") == request.str("closing_id") }
+                table("pureice_closing_handover").add(request)
+                return request
+            }
             "pureice_set_customer_location" -> {
                 if (failLocation) throw ApiError(400, "P0001", "العميل غير موجود")
                 val request = args["p_request"] as JsonObject
@@ -141,7 +169,7 @@ private class FakeServer : Remote {
         throw ApiError(404, "PGRST202", "missing")
     }
 
-    override suspend fun upload(bucket: String, path: String, bytes: ByteArray, contentType: String, bearer: String) { uploads.add(path) }
+    override suspend fun upload(bucket: String, path: String, bytes: ByteArray, contentType: String, bearer: String) { uploads.add(path); uploadTypes[path] = contentType }
 }
 
 private fun sale(id: String, customer: String = "c1", qty: Int = 5, credit: Int = 1000) = buildJsonObject {
@@ -153,6 +181,15 @@ private fun sale(id: String, customer: String = "c1", qty: Int = 5, credit: Int 
 private fun closing(id: String, counted: Int = 9000) = buildJsonObject {
     put("id", id); put("trip_id", TRIP); put("expected_cash", 9000); put("counted_cash", counted); put("difference", 0)
     put("notes", JsonNull); put("created_by", OWNER); put("created_at", "2026-11-14T15:00:00.000Z")
+}
+
+/** A closing handover as the phone queues it: [transfer] of [counted] by deposit, the rest in cash. */
+private fun handover(id: String, closing: String, counted: Int = 9000, transfer: Int = 0, slip: String? = null) = buildJsonObject {
+    put("id", id); put("closing_id", closing); put("trip_id", TRIP)
+    put("cash_amount", counted - transfer); put("transfer_amount", transfer)
+    if (slip != null) { put("slip_path", "$OWNER/$slip"); put("slip_blob", "/data/$slip"); put("slip_type", if (slip.endsWith(".pdf")) "application/pdf" else "image/jpeg") }
+    else put("slip_path", JsonNull)
+    put("created_by", OWNER); put("created_at", "2026-11-14T15:00:01.000Z")
 }
 
 private fun customer(id: String) = buildJsonObject {
@@ -174,6 +211,14 @@ private fun boxRow(n: Int, status: String = "truck") = buildJsonObject {
 
 private fun openTrip(server: FakeServer, status: String = "open") {
     server.table("trips").add(buildJsonObject { put("id", TRIP); put("distributor_id", OWNER); put("status", status); put("truck_id", "t1") })
+}
+
+/** OWNER assists OTHER's campaign [TRIP]; the server answers with the assistant role. */
+private fun assistTrip(server: FakeServer) {
+    val trip = buildJsonObject { put("id", TRIP); put("distributor_id", OTHER); put("status", "open"); put("truck_id", "t1") }
+    server.table("trips").add(trip)
+    server.assistantSupport = true
+    server.myOpenTrip = buildJsonObject { put("trip", trip); put("role", "assistant"); put("assistants", buildJsonArray { add(JsonPrimitive(OWNER)) }) }
 }
 
 class SyncTest {
@@ -343,6 +388,196 @@ class SyncTest {
         engine.flushOutbox(OWNER)
         engine.fetchRef(OWNER) // the open campaign's snapshot does not list route points
         assertNull(store.getOp("g1"))
+    }
+
+    @Test fun handoverWaitsForItsClosing() = runTest {
+        openTrip(server)
+        server.failInvoice = "المخزون غير كاف"
+        store.enqueue(OWNER, "sale", sale("s1"))
+        store.enqueue(OWNER, "closing", closing("k1"))
+        store.enqueue(OWNER, "closing_handover", handover("h1", "k1", transfer = 4000, slip = "handover-k1.jpg"))
+        engine.flushOutbox(OWNER)
+        assertFalse(server.calls.contains("rpc:pureice_save_closing_handover"))
+        assertEquals("blocked", store.getOp("h1")!!.state)
+        assertTrue(server.uploads.isEmpty()) // the slip waits with it
+        // Once the sale and the closing go through, the handover follows them.
+        server.failInvoice = null
+        engine.flushOutbox(OWNER)
+        assertTrue(server.calls.indexOf("rpc:submit_closing") < server.calls.indexOf("rpc:pureice_save_closing_handover"))
+        assertEquals("acknowledged", store.getOp("h1")!!.state)
+    }
+
+    @Test fun handoverArchivedOnServerCopy() = runTest {
+        openTrip(server)
+        server.handoverSupport = true
+        store.enqueue(OWNER, "closing", closing("k1"))
+        store.enqueue(OWNER, "closing_handover", handover("h1", "k1", transfer = 9000, slip = "handover-k1.jpg"))
+        engine.flushOutbox(OWNER)
+        engine.fetchRef(OWNER)
+        assertNull(store.getOp("h1"))
+        assertNotNull(store.cacheObject(OWNER, "operation:h1"))
+    }
+
+    @Test fun handoverStaysWhenTheServerHoldsOtherValues() = runTest {
+        openTrip(server)
+        server.handoverSupport = true
+        store.enqueue(OWNER, "closing", closing("k1"))
+        store.enqueue(OWNER, "closing_handover", handover("h1", "k1"))
+        engine.flushOutbox(OWNER)
+        // Another correction reached the server meanwhile.
+        server.table("pureice_closing_handover").replaceAll { it.with("cash_amount" to JsonPrimitive(0), "transfer_amount" to JsonPrimitive(9000)) }
+        engine.fetchRef(OWNER)
+        assertEquals("acknowledged", store.getOp("h1")!!.state)
+    }
+
+    @Test fun replacedHandoverIsArchivedWithItsCorrection() = runTest {
+        openTrip(server)
+        server.handoverSupport = true
+        store.enqueue(OWNER, "closing", closing("k1"))
+        store.enqueue(OWNER, "closing_handover", handover("h1", "k1"))
+        engine.flushOutbox(OWNER)
+        // Before the phone refreshed, a correction of the same closing replaced it on the server.
+        store.enqueue(OWNER, "closing_handover", handover("h2", "k1", transfer = 9000, slip = "handover-k1.jpg"))
+        engine.flushOutbox(OWNER)
+        engine.fetchRef(OWNER)
+        assertNull(store.getOp("h2"))
+        assertNull(store.getOp("h1")) // superseded by h2, which the server holds
+    }
+
+    @Test fun refusedHandoverAndTruckReportCanBeSetAside() = runTest {
+        openTrip(server)
+        server.handoverSupport = true
+        server.truckCareSupport = true
+        // The server will never take these: a handover for a closing it does not hold, a report it refuses.
+        store.enqueue(OWNER, "closing", closing("k1"))
+        server.table("closings").add(closing("k1").with("status" to JsonPrimitive("approved")))
+        store.enqueue(OWNER, "closing_handover", handover("h1", "missing-closing"))
+        store.putOp(store.getOp("h1")!!.copy(state = "blocked", lastError = "الإغلاق ليس لهذا الحساب"))
+        store.enqueue(OWNER, "truck_issue", buildJsonObject {
+            put("id", "i1"); put("truck_id", "t1"); put("title", "الفرامل"); put("details", JsonNull); put("severity", "normal")
+            put("photo_path", JsonNull); put("created_by", OWNER); put("created_at", "2026-11-14T09:00:00.000Z")
+        })
+        store.putOp(store.getOp("i1")!!.copy(state = "blocked", lastError = "تحتاج حملة مفتوحة"))
+        store.setAside(OWNER, "h1")
+        store.setAside(OWNER, "i1")
+        assertEquals("set_aside", store.getOp("h1")!!.state)
+        assertEquals("set_aside", store.getOp("i1")!!.state)
+    }
+
+    @Test fun truckReportOfAnEndedCampaignIsArchivedOnceAcknowledged() = runTest {
+        openTrip(server)
+        server.truckCareSupport = true
+        store.enqueue(OWNER, "truck_issue", buildJsonObject {
+            put("id", "i1"); put("truck_id", "t1"); put("title", "الفرامل"); put("details", JsonNull); put("severity", "normal")
+            put("photo_path", JsonNull); put("created_by", OWNER); put("created_at", "2026-11-14T09:00:00.000Z")
+        })
+        engine.flushOutbox(OWNER)
+        assertEquals("acknowledged", store.getOp("i1")!!.state)
+        // The campaign closed before the refresh: its truck's reports are no longer readable to him.
+        server.table("trips").clear()
+        server.table("pureice_truck_issues").clear()
+        engine.fetchRef(OWNER)
+        assertNull(store.getOp("i1"))
+    }
+
+    @Test fun pdfSlipUploadsAsPdf() = runTest {
+        openTrip(server)
+        store.enqueue(OWNER, "closing", closing("k1"))
+        store.enqueue(OWNER, "closing_handover", handover("h1", "k1", transfer = 9000, slip = "handover-k1.pdf"))
+        engine.flushOutbox(OWNER)
+        assertEquals("application/pdf", server.uploadTypes["$OWNER/handover-k1.pdf"])
+        val request = server.table("pureice_closing_handover").single()
+        assertEquals("$OWNER/handover-k1.pdf", request.str("slip_path"))
+        assertNull(request["slip_blob"]) // the phone's file path never leaves the phone
+    }
+
+    @Test fun handoverSlipMustBeTheOwners() = runTest {
+        openTrip(server)
+        store.enqueue(OWNER, "closing", closing("k1"))
+        store.enqueue(OWNER, "closing_handover", handover("h1", "k1", transfer = 9000, slip = "x.jpg").with("slip_path" to JsonPrimitive("$OTHER/x.jpg")))
+        engine.flushOutbox(OWNER)
+        assertEquals("blocked", store.getOp("h1")!!.state)
+        assertTrue(server.uploads.isEmpty())
+    }
+
+    @Test fun assistantFindsHisTrip() = runTest {
+        assistTrip(server)
+        val ref = engine.fetchRef(OWNER)
+        assertEquals(TRIP, ref.obj("trip")?.str("id"))
+        assertEquals(TRIP, server.snapshotTrip) // stock and the campaign's sales come from his campaign
+        val snap = Snapshot(ref, emptyList(), OWNER)
+        assertEquals("assistant", snap.tripRole)
+        assertTrue(snap.ownOpenTrip(OWNER))
+        assertFalse(snap.canCloseOrApprove)
+    }
+
+    @Test fun mainDistributorKeepsHisRole() = runTest {
+        openTrip(server)
+        // A server without assistants: the campaign he leads, found as before.
+        val before = Snapshot(engine.fetchRef(OWNER), emptyList(), OWNER)
+        assertEquals("main", before.tripRole)
+        assertTrue(before.canCloseOrApprove)
+        // With assistants: the server says which campaign and which role.
+        server.assistantSupport = true
+        server.myOpenTrip = buildJsonObject { put("trip", server.table("trips").single()); put("role", "main"); put("assistants", buildJsonArray { add(JsonPrimitive(OTHER)) }) }
+        val after = Snapshot(engine.fetchRef(OWNER), emptyList(), OWNER)
+        assertEquals("main", after.tripRole)
+        assertEquals(listOf(OTHER), after.assistants)
+        assertTrue(after.ownOpenTrip(OWNER) && after.canCloseOrApprove)
+    }
+
+    @Test fun noTripWhenTheServerSaysNone() = runTest {
+        server.assistantSupport = true
+        // The old lookup would find this campaign; the server's answer (none) wins.
+        openTrip(server)
+        val snap = Snapshot(engine.fetchRef(OWNER), emptyList(), OWNER)
+        assertNull(snap.trip)
+        assertNull(snap.tripRole)
+        assertFalse(snap.ownOpenTrip(OWNER))
+    }
+
+    @Test fun assistantSaleRejectedForStockStaysBlocked() = runTest {
+        assistTrip(server)
+        engine.fetchRef(OWNER)
+        // The main distributor sold the last bags from his phone first.
+        server.failInvoice = "المخزون المعتمد غير كاف"
+        store.enqueue(OWNER, "sale", sale("s1"))
+        assertEquals(1, engine.flushOutbox(OWNER).failed)
+        val op = store.getOp("s1")!!
+        assertEquals("blocked", op.state)
+        assertEquals("المخزون المعتمد غير كاف", op.lastError)
+        engine.fetchRef(OWNER)
+        assertNotNull(store.getOp("s1")) // kept for review, never lost
+    }
+
+    @Test fun truckIssueQueuesOffline() = runTest {
+        openTrip(server)
+        server.truckCareSupport = true
+        store.enqueue(OWNER, "truck_issue", buildJsonObject {
+            put("id", "i1"); put("truck_id", "t1"); put("title", "الفرامل"); put("details", "صوت عند التوقف"); put("severity", "urgent")
+            put("photo_path", "$OWNER/issue-i1.jpg"); put("photo_blob", "/data/issue.jpg"); put("created_by", OWNER); put("created_at", "2026-11-14T09:00:00.000Z")
+        })
+        // An issue never holds anything back, and nothing holds it back.
+        store.enqueue(OWNER, "closing", closing("k1"))
+        engine.flushOutbox(OWNER)
+        assertEquals(listOf("$OWNER/issue-i1.jpg"), server.uploads)
+        val sent = server.table("pureice_truck_issues").single()
+        assertNull(sent["photo_blob"]) // the phone's file path never leaves the phone
+        assertEquals("الفرامل", sent.str("title"))
+        assertEquals("acknowledged", store.getOp("i1")!!.state)
+        engine.fetchRef(OWNER)
+        assertNull(store.getOp("i1"))
+    }
+
+    @Test fun truckIssuePhotoMustBeTheOwners() = runTest {
+        openTrip(server)
+        store.enqueue(OWNER, "truck_issue", buildJsonObject {
+            put("id", "i2"); put("truck_id", "t1"); put("title", "الإطار"); put("severity", "normal")
+            put("photo_path", "$OTHER/x.jpg"); put("photo_blob", "/data/x.jpg"); put("created_by", OWNER); put("created_at", "2026-11-14T09:00:00.000Z")
+        })
+        engine.flushOutbox(OWNER)
+        assertEquals("blocked", store.getOp("i2")!!.state)
+        assertTrue(server.uploads.isEmpty())
     }
 
     @Test fun localCopyIsKeptUntilTheSnapshotIncludesIt() = runTest {
