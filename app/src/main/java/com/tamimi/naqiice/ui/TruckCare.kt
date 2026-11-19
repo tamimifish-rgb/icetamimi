@@ -62,6 +62,7 @@ fun TruckCareScreen() {
     var f1 by remember { mutableStateOf("") }
     var f2 by remember { mutableStateOf("") }
     var f3 by remember { mutableStateOf("") }
+    var serviceId by remember { mutableStateOf("") }
 
     val load = rememberLoaded("truck-care") { bearer ->
         val trucks = repo.api.selectAll("trucks", "select=id,name,code,active&active=eq.true&order=code,id", bearer)
@@ -118,7 +119,7 @@ fun TruckCareScreen() {
                             f1 = row.plan?.numOrNull("interval_km")?.toInt()?.toString() ?: ""; f2 = row.plan?.numOrNull("interval_days")?.toInt()?.toString() ?: ""
                             planFor = row.truck
                         }, Modifier.weight(1f), Variant.Outline, enabled = !operation.busy)
-                        SmallBtn("تسجيل صيانة", { f1 = row.km?.toLong()?.toString() ?: ""; f2 = ""; f3 = ""; serviceFor = row.truck }, Modifier.weight(1f), enabled = !operation.busy)
+                        SmallBtn("تسجيل صيانة", { f1 = row.km?.toLong()?.toString() ?: ""; f2 = ""; f3 = ""; serviceId = UUID.randomUUID().toString(); serviceFor = row.truck }, Modifier.weight(1f), enabled = !operation.busy)
                     }
                     if (row.issues.isNotEmpty()) {
                         Text("بلاغات مفتوحة", style = T.sm.bold)
@@ -173,7 +174,7 @@ fun TruckCareScreen() {
                     val km = parseNumber(f1); val cost = if (f2.isBlank()) 0.0 else parseNumber(f2)
                     if (!km.isFinite() || km < 0 || !cost.isFinite() || cost < 0) { toast("أدخل قراءة العداد والتكلفة"); return@Btn }
                     call("pureice_record_service", "سُجّلت الصيانة", buildJsonObject {
-                        put("p_id", UUID.randomUUID().toString()); put("p_truck", truck.str("id")); put("p_km", km); put("p_date", today)
+                        put("p_id", serviceId); put("p_truck", truck.str("id")); put("p_km", km); put("p_date", today)
                         put("p_cost", cost); put("p_note", f3.trim().ifEmpty { null })
                     })
                 }, Modifier.fillMaxWidth(), enabled = !operation.busy)

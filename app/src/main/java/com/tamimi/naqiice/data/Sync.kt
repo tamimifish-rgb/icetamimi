@@ -433,9 +433,14 @@ class SyncEngine(
             for (ids in issuesSent.map { it.id }.chunked(40)) {
                 remote.select("pureice_truck_issues", "select=id&id=in.(${ids.joinToString(",")})", bearer).mapNotNullTo(issueEvidence) { it.str("id") }
             }
+            // A distributor reads only the reports of his current campaign's truck. The server took a
+            // report for another truck (acknowledged = its function returned the row), so it is done.
+            val currentTruck = trip?.str("truck_id")
+            issuesSent.filter { it.payload.str("truck_id") != currentTruck }.mapTo(issueEvidence) { it.id }
         }
-        // A handover is cleared when the server holds exactly what it sent: a later correction
-        // of the same closing must not clear an earlier request, nor the other way round.
+        // A handover is cleared when the server holds exactly what it sent; an earlier request is
+        // also cleared by a later correction of the same closing that the server holds. An earlier
+        // request's values never clear a later one.
         val handoverEvidence = HashSet<String>()
         if (handoversSent.isNotEmpty() && supported("pureice_closing_handover_support", bearer) == true) {
             for (chunk in handoversSent.chunked(40)) {
@@ -445,6 +450,13 @@ class SyncEngine(
                     if (row.num("cash_amount") == op.payload.num("cash_amount") && row.num("transfer_amount") == op.payload.num("transfer_amount") &&
                         row.str("slip_path") == op.payload.str("slip_path")) handoverEvidence.add(op.id)
                 }
+            }
+            // An earlier request the server took is done once a later correction of the same closing
+            // is held exactly: the server keeps one handover per closing.
+            // handoversSent keeps the outbox order (oldest first).
+            handoversSent.forEachIndexed { i, op ->
+                val closing = op.payload.str("closing_id")
+                if (handoversSent.drop(i + 1).any { it.id in handoverEvidence && it.payload.str("closing_id") == closing }) handoverEvidence.add(op.id)
             }
         }
         guard()

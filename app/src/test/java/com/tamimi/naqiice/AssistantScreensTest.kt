@@ -44,6 +44,16 @@ class AssistantScreensTest : ScreenHarness() {
         assertTrue(absent("أنت مساعد في هذه الحملة"))
     }
 
+    @Test fun mainDistributorConfirmsTheAssistantSyncedBeforeClosing() {
+        Fixture.assistant = "main"
+        show(Screen.Closing)
+        waitFor("رفع جوال المساعد كل فواتيره")
+        compose.onAllNodesWithText("إرسال الإغلاق").onLast().performScrollTo().performClick()
+        compose.waitForIdle()
+        assertTrue(org.robolectric.shadows.ShadowToast.getTextOfLatestToast()?.contains("أكّد") == true)
+        assertTrue(repo.pending.value.none { it.kind == "closing" })
+    }
+
     @Test fun supervisorAddsAssistant() {
         Fixture.assistant = "assistant"
         show(Screen.Trip("sup-trip-b"), "supervisor")

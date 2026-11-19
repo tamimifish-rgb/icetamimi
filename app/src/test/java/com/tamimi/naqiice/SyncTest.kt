@@ -430,6 +430,56 @@ class SyncTest {
         assertEquals("acknowledged", store.getOp("h1")!!.state)
     }
 
+    @Test fun replacedHandoverIsArchivedWithItsCorrection() = runTest {
+        openTrip(server)
+        server.handoverSupport = true
+        store.enqueue(OWNER, "closing", closing("k1"))
+        store.enqueue(OWNER, "closing_handover", handover("h1", "k1"))
+        engine.flushOutbox(OWNER)
+        // Before the phone refreshed, a correction of the same closing replaced it on the server.
+        store.enqueue(OWNER, "closing_handover", handover("h2", "k1", transfer = 9000, slip = "handover-k1.jpg"))
+        engine.flushOutbox(OWNER)
+        engine.fetchRef(OWNER)
+        assertNull(store.getOp("h2"))
+        assertNull(store.getOp("h1")) // superseded by h2, which the server holds
+    }
+
+    @Test fun refusedHandoverAndTruckReportCanBeSetAside() = runTest {
+        openTrip(server)
+        server.handoverSupport = true
+        server.truckCareSupport = true
+        // The server will never take these: a handover for a closing it does not hold, a report it refuses.
+        store.enqueue(OWNER, "closing", closing("k1"))
+        server.table("closings").add(closing("k1").with("status" to JsonPrimitive("approved")))
+        store.enqueue(OWNER, "closing_handover", handover("h1", "missing-closing"))
+        store.putOp(store.getOp("h1")!!.copy(state = "blocked", lastError = "الإغلاق ليس لهذا الحساب"))
+        store.enqueue(OWNER, "truck_issue", buildJsonObject {
+            put("id", "i1"); put("truck_id", "t1"); put("title", "الفرامل"); put("details", JsonNull); put("severity", "normal")
+            put("photo_path", JsonNull); put("created_by", OWNER); put("created_at", "2026-11-14T09:00:00.000Z")
+        })
+        store.putOp(store.getOp("i1")!!.copy(state = "blocked", lastError = "تحتاج حملة مفتوحة"))
+        store.setAside(OWNER, "h1")
+        store.setAside(OWNER, "i1")
+        assertEquals("set_aside", store.getOp("h1")!!.state)
+        assertEquals("set_aside", store.getOp("i1")!!.state)
+    }
+
+    @Test fun truckReportOfAnEndedCampaignIsArchivedOnceAcknowledged() = runTest {
+        openTrip(server)
+        server.truckCareSupport = true
+        store.enqueue(OWNER, "truck_issue", buildJsonObject {
+            put("id", "i1"); put("truck_id", "t1"); put("title", "الفرامل"); put("details", JsonNull); put("severity", "normal")
+            put("photo_path", JsonNull); put("created_by", OWNER); put("created_at", "2026-11-14T09:00:00.000Z")
+        })
+        engine.flushOutbox(OWNER)
+        assertEquals("acknowledged", store.getOp("i1")!!.state)
+        // The campaign closed before the refresh: its truck's reports are no longer readable to him.
+        server.table("trips").clear()
+        server.table("pureice_truck_issues").clear()
+        engine.fetchRef(OWNER)
+        assertNull(store.getOp("i1"))
+    }
+
     @Test fun pdfSlipUploadsAsPdf() = runTest {
         openTrip(server)
         store.enqueue(OWNER, "closing", closing("k1"))

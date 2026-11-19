@@ -55,7 +55,8 @@ fun LocalStore.enqueue(ownerId: String, kind: String, payload: JsonObject, id: S
 }
 
 /** A closing under review, or a box/location record the server keeps refusing, can be parked. */
-fun OutboxOp.canSetAside(): Boolean = (kind == "closing" && state == "review") || (kind in SIDE_KINDS && state == "blocked")
+fun OutboxOp.canSetAside(): Boolean = (kind == "closing" && state == "review") ||
+    ((kind in SIDE_KINDS || kind == "closing_handover" || kind == "truck_issue") && state == "blocked")
 
 fun LocalStore.setAside(ownerId: String, id: String) = transaction {
     val op = getOp(id)

@@ -268,6 +268,8 @@ fun ClosingScreen() {
     var method by remember { mutableStateOf(HandoverMethod.Cash) }
     var transferText by remember { mutableStateOf("") }
     var slip by remember { mutableStateOf<String?>(null) }
+    // Records the assistant made offline cannot reach the server once the closing is sent.
+    var assistantSynced by remember { mutableStateOf(false) }
     val tripId = snap.tripId
 
     LaunchedEffect(tripId, changeSupport) {
@@ -288,6 +290,7 @@ fun ClosingScreen() {
         if (user == null || !snap.ownOpenTrip(user.id)) throw Notice("تحتاج حملة مفتوحة معينة لك")
         if (!snap.canCloseOrApprove) throw Notice("الإغلاق يرسله الموزع الرئيسي للحملة")
         if ((snap.closing != null && !flagged) || snap.closingQueued) throw Notice("تم إرسال إغلاق الحملة؛ الحفظ متوقف")
+        if (snap.assistants.isNotEmpty() && !assistantSynced) throw Notice("أكّد أن جوال المساعد رفع كل فواتيره وأنك استلمت نقده")
         if (counted.isEmpty()) throw Notice("أدخل النقد المعدود")
         if (!c.isFinite() || c < 0) throw Notice("النقد المعدود غير صحيح")
         val transfer = if (transferText.isEmpty()) 0.0 else parseNumber(transferText)
@@ -344,6 +347,12 @@ fun ClosingScreen() {
                 }
             }
             Text("يسجّل المشرف المرتجع والتالف عند وصولك للمصنع.", style = T.xs.muted, modifier = Modifier.padding(top = 4.dp))
+        }
+        if (snap.assistants.isNotEmpty()) Banner(Ice.warning.copy(alpha = 0.2f)) {
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                Text("رفع جوال المساعد كل فواتيره (متصل، ولا شيء بانتظار الرفع) واستلمت نقده. بعد الإغلاق لا تُرفع فواتيره.", Modifier.weight(1f), style = T.sm)
+                Toggle(assistantSynced) { assistantSynced = it }
+            }
         }
         Field(counted, { counted = it }, "النقد المعدود فعلياً", numeric = true, large = true)
         if (counted.isNotEmpty()) Banner(if (difference == 0.0) Ice.success.copy(alpha = 0.15f) else Ice.destructive.copy(alpha = 0.1f)) {

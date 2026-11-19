@@ -79,15 +79,17 @@ fun StaffProfileScreen(staffId: String) {
     val data = load.data
     val isAdmin = me?.isAdmin == true
 
+    // One id per entry, kept when Save is tapped again after a lost reply, so it is never written twice.
+    var entryId by remember { mutableStateOf(UUID.randomUUID().toString()) }
     fun deduct() = operation.run {
         val value = parseNumber(amount)
         if (!value.isFinite() || value <= 0) throw Notice("أدخل مبلغاً صحيحاً")
         repo.api.rpc("pureice_add_staff_entry", buildJsonObject {
-            put("p_id", UUID.randomUUID().toString()); put("p_staff", staffId); put("p_kind", "deduction")
+            put("p_id", entryId); put("p_staff", staffId); put("p_kind", "deduction")
             put("p_amount", value); put("p_note", if (note.isBlank()) JsonNull else kotlinx.serialization.json.JsonPrimitive(note.trim()))
         }, repo.api.token())
         toast("سُجّل الخصم")
-        deducting = false; amount = ""; note = ""
+        deducting = false; amount = ""; note = ""; entryId = UUID.randomUUID().toString()
         load.reload()
     }
 

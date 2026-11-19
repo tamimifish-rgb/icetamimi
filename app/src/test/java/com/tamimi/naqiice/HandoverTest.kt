@@ -30,5 +30,9 @@ class HandoverTest {
         assertEquals(9000.0 to 0.0, handoverAmounts(9000.0, HandoverMethod.Cash, 1234.0))
         assertEquals(0.0 to 9000.0, handoverAmounts(9000.0, HandoverMethod.Transfer, 1234.0))
         assertEquals(4000.0 to 5000.0, handoverAmounts(9000.0, HandoverMethod.Both, 5000.0))
+        // The server checks cash + transfer = counted exactly; the split must not drift.
+        val (cash, transfer) = handoverAmounts(0.15, HandoverMethod.Both, 0.01)
+        assertEquals(0.14, cash, 0.0)
+        assertEquals(java.math.BigDecimal("0.15"), java.math.BigDecimal(cash.toString()) + java.math.BigDecimal(transfer.toString()))
     }
 }

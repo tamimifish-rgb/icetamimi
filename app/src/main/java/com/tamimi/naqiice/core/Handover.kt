@@ -10,7 +10,7 @@ enum class HandoverMethod { Cash, Transfer, Both }
 fun handoverAmounts(counted: Double, method: HandoverMethod, transfer: Double): Pair<Double, Double> = when (method) {
     HandoverMethod.Cash -> counted to 0.0
     HandoverMethod.Transfer -> 0.0 to counted
-    HandoverMethod.Both -> (counted - transfer) to transfer
+    HandoverMethod.Both -> java.math.BigDecimal(counted.toString()).subtract(java.math.BigDecimal(transfer.toString())).toDouble() to transfer
 }
 
 /** Null when the handover can be sent, otherwise the message to show. */
