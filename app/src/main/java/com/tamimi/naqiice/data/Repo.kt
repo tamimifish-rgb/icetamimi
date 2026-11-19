@@ -91,6 +91,8 @@ class Repo(private val context: Context, private val httpClient: okhttp3.OkHttpC
     val ledgerSupport = MutableStateFlow(false)
     /** The server keeps truck service plans and problem reports. */
     val truckCareSupport = MutableStateFlow(false)
+    /** The server has assistant distributors on a campaign. */
+    val assistantSupport = MutableStateFlow(false)
     /** The open campaign's truck: {truck_id, plan, km, issues}; refreshed while online, kept offline. */
     val truckCare = MutableStateFlow<JsonObject?>(null)
     val company = MutableStateFlow(Company.DEFAULT)
@@ -152,7 +154,7 @@ class Repo(private val context: Context, private val httpClient: okhttp3.OkHttpC
         loop?.cancel()
         val session = api.currentSession()
         ref.value = null; pending.value = emptyList(); lastError.value = null
-        depositSupport.value = false; changeSupport.value = false; handoverSupport.value = false; ledgerSupport.value = false; truckCareSupport.value = false; truckCare.value = null; company.value = Company.DEFAULT
+        depositSupport.value = false; changeSupport.value = false; handoverSupport.value = false; ledgerSupport.value = false; truckCareSupport.value = false; assistantSupport.value = false; truckCare.value = null; company.value = Company.DEFAULT
         if (session == null) {
             me.value = null; loading.value = false
             trackingController?.invoke(this)
@@ -169,6 +171,7 @@ class Repo(private val context: Context, private val httpClient: okhttp3.OkHttpC
             handoverSupport.value = store.getCache("${next.id}:closing-handover-support") == "true"
             ledgerSupport.value = store.getCache("${next.id}:staff-ledger-support") == "true"
             truckCareSupport.value = store.getCache("${next.id}:truck-care-support") == "true"
+            assistantSupport.value = store.getCache("${next.id}:trip-assistant-support") == "true"
             truckCare.value = store.cacheObject(next.id, "truck-care")
             store.cacheObject(next.id, "company")?.let { company.value = it.toCompany() }
         }
@@ -276,6 +279,7 @@ class Repo(private val context: Context, private val httpClient: okhttp3.OkHttpC
             Triple("pureice_closing_handover_support", "closing-handover-support", handoverSupport),
             Triple("pureice_staff_ledger_support", "staff-ledger-support", ledgerSupport),
             Triple("pureice_truck_care_support", "truck-care-support", truckCareSupport),
+            Triple("pureice_trip_assistant_support", "trip-assistant-support", assistantSupport),
         )) runCatching {
             val supported = engine.featureSupport(user.id, function) ?: return@runCatching
             if (generation != version) return@runCatching

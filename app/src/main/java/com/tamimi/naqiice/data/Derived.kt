@@ -117,6 +117,16 @@ class Snapshot(serverRef: Row?, outbox: List<OutboxOp>, val ownerId: String?) {
 
     val day: Day by lazy { computeDay() }
 
+    /** Cash this account holds from the campaign: his cash sales and collections, less his expenses. */
+    fun cashHeldBy(userId: String?): Double {
+        fun mine(row: Row) = userId != null && row.str("created_by") == userId
+        return expectedCash(
+            day.sales.filter(::mine).sumOf { it.num("cash_paid") },
+            day.payments.filter(::mine).sumOf { it.num("amount") - it.num("deposit_amount") },
+            day.expenses.filter(::mine).sumOf { it.num("amount") },
+        )
+    }
+
     private fun computeDay(): Day {
         val campaign = if (tripId != null) this.pending.filter { it.payload.str("trip_id") == tripId } else emptyList()
         val mark = "_pending" to JsonPrimitive(true)

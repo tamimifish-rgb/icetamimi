@@ -64,7 +64,7 @@ private fun DataRow.closing(): DataRow? = obj("closings") ?: rows("closings").fi
 
 private class TripsData(
     val trucks: List<DataRow>, val trips: List<DataRow>, val profiles: List<DataRow>,
-    val openTrips: List<DataRow>, val distributors: List<DataRow>,
+    val openTrips: List<DataRow>, val distributors: List<DataRow>, val assistants: List<DataRow> = emptyList(),
 )
 
 @Composable
@@ -72,13 +72,14 @@ fun TripsScreen() {
     val repo = LocalRepo.current
     val nav = LocalNav.current
     val truckCareOn by repo.truckCareSupport.collectAsState()
+    val assistantsOn by repo.assistantSupport.collectAsState()
     val operation = rememberOperation()
     val toast = rememberToast()
     var date by remember { mutableStateOf(adenDay()) }
     val pick = remember { mutableStateMapOf<String, String>() }
     val boxSupport = repo.snapshot.collectAsState().value.boxSupport
 
-    val load = rememberLoaded(date) { bearer ->
+    val load = rememberLoaded(date, assistantsOn) { bearer ->
         coroutineScope {
             val api = repo.api
             val trucks = async { api.select("trucks", "select=*&active=eq.true&order=code", bearer) }
@@ -86,8 +87,9 @@ fun TripsScreen() {
             val profiles = async { api.select("profiles", "select=id,full_name,truck_id", bearer) }
             val openTrips = async { api.selectAll("trips", "select=id,truck_id,distributor_id,trip_date,status&status=neq.closed&order=trip_date,id", bearer) }
             val roles = async { api.select("user_roles", "select=user_id&role=eq.distributor", bearer) }
+            val assistants = async { if (assistantsOn) api.selectAll("pureice_trip_assistants", "select=trip_id,user_id&order=trip_id,added_at", bearer) else emptyList() }
             val ids = roles.await().mapNotNull { it.str("user_id") }.toHashSet()
-            TripsData(trucks.await(), trips.await(), profiles.await(), openTrips.await(), profiles.await().filter { it.str("id") in ids })
+            TripsData(trucks.await(), trips.await(), profiles.await(), openTrips.await(), profiles.await().filter { it.str("id") in ids }, assistants.await())
         }
     }
 
@@ -136,7 +138,8 @@ fun TripsScreen() {
                         trip.str("loading_approved_at") != null -> "جارية (التحميل معتمد)"
                         else -> "بانتظار اعتماد الموزع للتحميل"
                     }
-                    TripLink("حملة ${index + 1} · ${name(trip.str("distributor_id"))}", "$state · ${formatMoney(total)}") { trip.str("id")?.let { nav.go(Screen.Trip(it)) } }
+                    val helpers = data.assistants.filter { it.str("trip_id") == trip.str("id") }.joinToString("، ") { name(it.str("user_id")) }
+                    TripLink("حملة ${index + 1} · ${name(trip.str("distributor_id"))}" + (if (helpers.isEmpty()) "" else " + $helpers"), "$state · ${formatMoney(total)}") { trip.str("id")?.let { nav.go(Screen.Trip(it)) } }
                 }
                 otherOpen.forEach { trip ->
                     TripLink("حملة مفتوحة بتاريخ ${trip.str("trip_date")} · ${name(trip.str("distributor_id"))}", "يجب إغلاقها قبل فتح حملة جديدة", highlighted = true) {
@@ -225,6 +228,7 @@ fun TripScreen(id: String) {
         // The route lives on the map page (web: /map?trip=<id>).
         Btn("عرض خط السير", { nav.go(Screen.RouteMap(id)) }, variant = Variant.Outline, height = 44.dp)
         trip.str("distributor_id")?.let { distributor -> Btn("ملف الموزع وحسابه", { nav.go(Screen.StaffProfile(distributor)) }, variant = Variant.Outline, height = 44.dp) }
+        TripAssistants(id, trip.str("distributor_id"), open = !closed, closingSent = closing != null)
         Banner(if (closed) Ice.muted else if (pendingLoads > 0) Ice.warning.copy(alpha = 0.3f) else Ice.success.copy(alpha = 0.15f)) {
             Text(
                 when {

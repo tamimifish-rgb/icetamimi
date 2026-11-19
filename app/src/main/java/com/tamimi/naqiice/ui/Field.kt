@@ -277,6 +277,7 @@ fun ClosingScreen() {
 
     if (snap.trip == null) { Empty("لا توجد حملة مفتوحة."); return }
     val flagged = snap.closing?.str("status") == "flagged"
+    if (snap.isAssistant) { Empty("الإغلاق يرسله الموزع الرئيسي للحملة. سلّم له النقد الذي معك: ${formatMoney(snap.cashHeldBy(me?.id))}."); return }
     if (!flagged && snap.closingSent) { Empty("تم إرسال إغلاق الحملة بالفعل."); return }
     val day = snap.day
     val c = parseNumber(counted)
@@ -285,6 +286,7 @@ fun ClosingScreen() {
     fun send() = operation.run { operationId ->
         val user = me
         if (user == null || !snap.ownOpenTrip(user.id)) throw Notice("تحتاج حملة مفتوحة معينة لك")
+        if (!snap.canCloseOrApprove) throw Notice("الإغلاق يرسله الموزع الرئيسي للحملة")
         if ((snap.closing != null && !flagged) || snap.closingQueued) throw Notice("تم إرسال إغلاق الحملة؛ الحفظ متوقف")
         if (counted.isEmpty()) throw Notice("أدخل النقد المعدود")
         if (!c.isFinite() || c < 0) throw Notice("النقد المعدود غير صحيح")

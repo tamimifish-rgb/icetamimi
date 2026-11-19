@@ -40,4 +40,21 @@ class TrackingTest : ScreenHarness() {
         }
         assertEquals(TrackingService::class.java.name, app.nextStartedService?.component?.className)
     }
+
+    /** One tracker per truck: the main distributor's phone records the route, never the assistant's. */
+    @Test fun assistantDoesNotTrack() {
+        Fixture.assistant = "assistant"
+        signedIn("distributor")
+        val snapshot = repo.snapshot.value
+        assertTrue(snapshot.ownOpenTrip(repo.me.value!!.id) && snapshot.isAssistant) // he may sell
+        val app = Shadows.shadowOf(this.app)
+        app.clearStartedServices()
+        compose.runOnUiThread {
+            TrackingService.visible = true
+            TrackingService.update(this.app, repo)
+            TrackingService.visible = false
+        }
+        assertNull(app.nextStartedService)
+        assertNull(repo.tracking.value)
+    }
 }

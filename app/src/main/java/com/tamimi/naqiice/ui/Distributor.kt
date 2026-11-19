@@ -68,13 +68,24 @@ fun TodayScreen() {
     val day = snap.day
     val trip = snap.trip
     val truck = snap.truck(trip?.str("truck_id") ?: me?.truckId)
-    val toApprove = snap.unapprovedLoads
+    // Approving the load is the main distributor's; an assistant only sees that it waits.
+    val toApprove = if (snap.canCloseOrApprove) snap.unapprovedLoads else emptyList()
     val failed = snap.pending.filter { it.lastError != null && it.state != "set_aside" }
 
     Column(verticalArrangement = Arrangement.spacedBy(20.dp)) {
         PageTitle(truck?.str("name")?.let { "$it — الحملة" } ?: "الحملة", spacing = 20.dp)
         TruckServiceBanner()
         TrackingStatus(snap)
+        if (trip != null && snap.isAssistant) Banner(Ice.secondary) {
+            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text("أنت مساعد في هذه الحملة", style = T.base.bold)
+                Text("النقد الذي معك: ${formatMoney(snap.cashHeldBy(me?.id))} — سلّم النقد للموزع الرئيسي قبل الإغلاق.", style = T.sm)
+                if (snap.unapprovedLoads.isNotEmpty()) Text("يوجد تحميل بانتظار اعتماد الموزع الرئيسي.", style = T.xs.muted)
+            }
+        }
+        if (trip != null && snap.canCloseOrApprove && snap.assistants.isNotEmpty()) Banner(Ice.secondary) {
+            Text("في الحملة مساعد: يشمل النقد المتوقع مبيعات المساعد وتحصيله، فاستلم نقده قبل الإغلاق.", style = T.sm)
+        }
         if (toApprove.isNotEmpty()) location.prompt()
         if (trip == null) Empty("لا توجد حملة مفتوحة لك حالياً. انتظر المشرف لتعيين حملة وتحميل الشاحنة.")
         if (trip != null && toApprove.isNotEmpty()) {
@@ -104,7 +115,7 @@ fun TodayScreen() {
                         Text("تم إرسال إغلاق الحملة — الحالة: ")
                         Text(when (status) { "approved" -> "معتمد"; "flagged" -> "يحتاج مراجعة"; else -> "بانتظار المشرف" }, style = T.sm.bold)
                     }
-                    if (status == "flagged") {
+                    if (status == "flagged" && snap.canCloseOrApprove) {
                         closing.str("review_note")?.let { Text("ملاحظة المشرف: $it", Modifier.padding(top = 4.dp)) }
                         Box(Modifier.padding(top = 8.dp).fillMaxWidth().box(Radius.lg, Ice.primary, null).tap { nav.go(Screen.Closing) }.padding(8.dp), contentAlignment = Alignment.Center) {
                             Text("تصحيح وإعادة الإرسال", style = T.sm.bold.color(Ice.onPrimary))
@@ -116,17 +127,17 @@ fun TodayScreen() {
 
         StatGrid(listOf(
             Triple("مبيعات الحملة", formatMoney(day.totalSales), Ice.foreground),
-            Triple("النقد المتوقع", formatMoney(day.expected), Ice.success),
+            Triple(if (snap.isAssistant) "نقد الحملة المتوقع" else "النقد المتوقع", formatMoney(day.expected), Ice.success),
             Triple("آجل الحملة", formatMoney(day.credit), Ice.onWarning),
             Triple("تحصيل ديون", formatMoney(day.collected), Ice.foreground),
             Triple("إيداعات", formatMoney(day.deposits), Ice.foreground),
         ))
 
         // grid grid-cols-3 gap-2
-        val quick = listOf(
+        val quick = listOfNotNull(
             Quick(Screen.Sale(), "فاتورة بيع", Lucide.ShoppingCart), Quick(Screen.Payment(), "تحصيل دين", Lucide.Wallet),
             Quick(Screen.FreezerAction(), "ثلاجة", Lucide.Snowflake), Quick(Screen.Expenses, "مصروف", Lucide.Receipt),
-            Quick(Screen.Maintenance, "صيانة", Lucide.Wrench), Quick(Screen.Closing, "إغلاق الحملة", Lucide.ClipboardCheck),
+            Quick(Screen.Maintenance, "صيانة", Lucide.Wrench), if (snap.isAssistant) null else Quick(Screen.Closing, "إغلاق الحملة", Lucide.ClipboardCheck),
         )
         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
             quick.chunked(3).forEach { row ->
@@ -206,14 +217,18 @@ private fun TrackingStatus(snap: Snapshot) {
     Column {
         Divider()
         Column(Modifier.padding(vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                Text(
-                    when { denied -> "إذن الموقع مرفوض"; s?.status == "unavailable" -> "الموقع غير متاح"; s?.status == "active" -> "التتبع نشط"; else -> "بانتظار الموقع" },
-                    style = T.sm.bold,
-                )
-                Text("آخر نقطة: ${adenTime(s?.last)}", style = T.sm)
+            // One tracker per truck: an assistant's phone leaves the route to the main distributor's.
+            if (snap.isAssistant) Text("خط السير يسجله جوال الموزع الرئيسي.", style = T.sm.muted)
+            else {
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                    Text(
+                        when { denied -> "إذن الموقع مرفوض"; s?.status == "unavailable" -> "الموقع غير متاح"; s?.status == "active" -> "التتبع نشط"; else -> "بانتظار الموقع" },
+                        style = T.sm.bold,
+                    )
+                    Text("آخر نقطة: ${adenTime(s?.last)}", style = T.sm)
+                }
+                if (denied) Text("فعّل إذن الموقع لهذا التطبيق من إعدادات الهاتف.", style = T.sm)
             }
-            if (denied) Text("فعّل إذن الموقع لهذا التطبيق من إعدادات الهاتف.", style = T.sm)
             Row(Modifier.fillMaxWidth().heightIn(min = 44.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
                 Text("إبقاء الشاشة مضاءة", style = T.sm)
                 Toggle(wake) { repo.keepAwake.value = it }
@@ -237,7 +252,7 @@ fun MoreScreen() {
         Quick(Screen.FreezerAction(), "حركة ثلاجة", Lucide.Snowflake), Quick(Screen.Expenses, "المصروفات", Lucide.Receipt),
         Quick(Screen.Maintenance, "الصيانة", Lucide.Wrench), if (truckCareOn) Quick(Screen.TruckIssue, "بلاغ عطل في الشاحنة", Lucide.AlertTriangle) else null, Quick(Screen.InvoiceChanges, "طلبات إلغاء وتعديل الفواتير", Lucide.FileX2),
         if (snap.boxSupport) Quick(Screen.Boxes, "الصناديق", Lucide.Boxes) else null,
-        Quick(Screen.Closing, "إغلاق اليوم", Lucide.ClipboardCheck),
+        if (snap.isAssistant) null else Quick(Screen.Closing, "إغلاق اليوم", Lucide.ClipboardCheck),
     )
     Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
         PageTitle("المزيد")

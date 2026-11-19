@@ -1,0 +1,54 @@
+{
+ "tables": {
+  "pureice_trip_assistants": [
+   {
+    "trip_id": "sup-trip-b",
+    "user_id": "sup-d7",
+    "added_by": "sup-sv1",
+    "added_at": "2026-11-14T06:30:00.000Z"
+   }
+  ],
+  "trip_loads": [],
+  "user_roles": [
+   {
+    "user_id": "sup-d2",
+    "role": "distributor"
+   },
+   {
+    "user_id": "sup-d3",
+    "role": "distributor"
+   },
+   {
+    "user_id": "sup-d5",
+    "role": "distributor"
+   },
+   {
+    "user_id": "sup-d6",
+    "role": "distributor"
+   },
+   {
+    "user_id": "sup-d7",
+    "role": "distributor"
+   }
+  ]
+ },
+ "rpc": {
+  "pureice_trip_assistant_support": 1,
+  "pureice_my_open_trip": {
+   "trip": {
+    "id": "33333333-3333-3333-3333-333333333333",
+    "truck_id": "t1",
+    "distributor_id": "sup-d2",
+    "status": "open",
+    "trip_date": "2026-11-14",
+    "loading_approved_at": "2026-11-14T05:00:00+00:00",
+    "created_at": "2026-11-14T04:00:00+00:00"
+   },
+   "role": "assistant",
+   "assistants": [
+    "11111111-1111-1111-1111-111111111111"
+   ]
+  },
+  "pureice_set_trip_assistant": true
+ }
+}
