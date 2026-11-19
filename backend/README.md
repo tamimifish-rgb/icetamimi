@@ -9,6 +9,7 @@ The app talks to the live "Tamimi Ice" Supabase project. Its base schema lives w
 | `91-performance.sql` | Speed only: `trip_id` indexes on `gps_points`, `payments` and `expenses`, and the 38 access rules on the 10 busiest tables rewritten to check the signed-in user once per query instead of once per row. Undone by `91-performance-rollback.sql` | — (no behaviour change) |
 | `92-closing-handover.sql` | How a closing's counted cash reaches the company: cash, deposit/transfer, or both, with the slip (`pureice_closing_handover`, `pureice_save_closing_handover`) | `pureice_closing_handover_support()` |
 | `93-staff-ledger.sql` | Each employee's account: who carries an approved closing's shortage (`pureice_shortage_decision`, `pureice_decide_shortage`) and charged shortages, salary deductions and adjustments (`pureice_staff_ledger`, `pureice_add_staff_entry`) | `pureice_staff_ledger_support()` |
+| `94-truck-care.sql` | Truck service plans and recorded services (managers), the truck's current odometer, and problem reports from distributors followed from open to fixed (`pureice_truck_service_plan`, `pureice_truck_services`, `pureice_truck_issues` and their functions) | `pureice_truck_care_support()` |
 
 Rules these files follow:
 
@@ -98,4 +99,19 @@ Checked on the live project after applying, in a rolled-back transaction that le
 
 Four approved closings were short and waited for a decision at that point. The security advisor's
 only new entries are the three functions, as intended.
+
+## 94-truck-care.sql
+
+Applied to the live project on 2026-11-19 as migration `pureice_truck_care`, after the owner
+approved it. Tests: `backend/test/run.sh backend/94-truck-care.sql`, 39 checks.
+
+Checked on the live project after applying, in a rolled-back transaction that left no rows behind:
+- a real distributor gets `1` from the support function, reads his own truck's odometer but not another truck's, can report a problem for his own truck, cannot set a service plan, and sees only his own truck's reports;
+- a real supervisor can set a plan and read any truck's odometer.
+
+The security advisor's only new entries are the seven functions, as intended.
+
+Services recorded by managers are kept in `pureice_truck_services`, not `maintenance_jobs`: a
+maintenance job must belong to an open campaign. Reports' maintenance and profit tabs do not include
+them yet.
 
