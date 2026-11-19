@@ -1,5 +1,9 @@
 package com.tamimi.naqiice.ui
 
+import com.tamimi.naqiice.core.bool
+import kotlinx.serialization.json.JsonNull
+import androidx.compose.material3.TextButton
+import androidx.compose.material3.AlertDialog
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -387,10 +391,19 @@ fun ClosingsScreen() {
     val me by repo.me.collectAsState()
     val depositSupport by repo.depositSupport.collectAsState()
     val handoverSupport by repo.handoverSupport.collectAsState()
+    val ledgerSupport by repo.ledgerSupport.collectAsState()
     var flagging by remember { mutableStateOf<String?>(null) }
     var handovers by remember { mutableStateOf<List<DataRow>>(emptyList()) }
+    /** closing id → charged (true) or absorbed (false). */
+    var decisions by remember { mutableStateOf<Map<String, Boolean>>(emptyMap()) }
+    /** An approved shortage the supervisor is asked about right after approving it. */
+    var deciding by remember { mutableStateOf<String?>(null) }
 
-    val load = rememberLoaded(me?.id, depositSupport, handoverSupport) { bearer ->
+    val load = rememberLoaded(me?.id, depositSupport, handoverSupport, ledgerSupport) { bearer ->
+        decisions = if (!ledgerSupport) emptyMap() else try {
+            repo.api.selectAll("pureice_shortage_decision", "select=closing_id,charged&order=closing_id", bearer)
+                .mapNotNull { row -> row.str("closing_id")?.let { it to (row.bool("charged") == true) } }.toMap()
+        } catch (e: ApiError) { emptyMap() } catch (e: IOException) { emptyMap() }
         // How each closing's cash was handed over (optional feature, like deposits).
         handovers = if (!handoverSupport) emptyList() else try {
             repo.api.selectAll("pureice_closing_handover", "select=*&order=closing_id", bearer)
@@ -403,9 +416,17 @@ fun ClosingsScreen() {
         closings to deposits
     }
 
-    fun review(id: String, status: String, note: String?) = operation.run {
+    fun review(id: String, status: String, note: String?, short: Boolean = false) = operation.run {
         repo.api.rpc("review_closing", buildJsonObject { put("p_id", id); put("p_status", status); put("p_note", note ?: "") }, repo.api.token())
         toast(if (status == "approved") "تم الاعتماد" else "أُعيد للموزع للتصحيح")
+        // A shortage is charged or absorbed once the closing is approved.
+        if (status == "approved" && short && ledgerSupport) deciding = id
+        load.reload()
+    }
+
+    fun decide(id: String, charge: Boolean) = operation.run {
+        repo.api.rpc("pureice_decide_shortage", buildJsonObject { put("p_closing", id); put("p_charge", charge); put("p_note", JsonNull) }, repo.api.token())
+        toast(if (charge) "أُضيف العجز إلى حساب الموزع" else "سُجّل العجز على الشركة")
         load.reload()
     }
 
@@ -416,7 +437,11 @@ fun ClosingsScreen() {
         if (load.error != null) LoadError(load.error, load.reload)
         // As on the web, the empty box also stands in while the list is loading.
         else if (data == null || data.first.isEmpty()) Empty("لا توجد إغلاقات")
-        else data.first.forEach { c ->
+        else {
+            val undecided = if (!ledgerSupport) 0 else data.first.count { it.str("status") == "approved" && it.num("difference") < 0 && it.str("id") !in decisions }
+            if (undecided > 0) Banner(Ice.warning.copy(alpha = 0.3f)) { Text("عجز بانتظار القرار: $undecided — اختر من يتحمل كل عجز معتمد.") }
+        }
+        if (data != null) data.first.forEach { c ->
             val closingId = c.str("id") ?: return@forEach
             val status = c.str("status")
             val deposits = data.second.filter { it.str("trip_id") != null && it.str("trip_id") == c.str("trip_id") }
@@ -456,12 +481,40 @@ fun ClosingsScreen() {
                     if (handover != null && handover.num("transfer_amount") > 0) DepositSlipButton(handover.str("slip_path"), "عرض إشعار الإيداع")
                 }
                 Text(formatDate(c.str("created_at")), Modifier.padding(top = 4.dp), style = T.xs.muted)
+                if (ledgerSupport && status == "approved" && c.num("difference") < 0) {
+                    when (decisions[closingId]) {
+                        true -> Text("العجز: على حساب الموزع", Modifier.padding(top = 4.dp), style = T.sm.bold.color(Ice.destructive))
+                        false -> Text("العجز: تتحمله الشركة", Modifier.padding(top = 4.dp), style = T.sm.muted)
+                        null -> Column(Modifier.padding(top = 8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Text("عجز بانتظار القرار: من يتحمله؟", style = T.sm.bold.color(Ice.destructive))
+                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                SmallBtn("تحميل العجز على الموزع", { decide(closingId, true) }, Modifier.weight(1f), Variant.Destructive, enabled = !operation.busy)
+                                SmallBtn("تتحمله الشركة", { decide(closingId, false) }, Modifier.weight(1f), Variant.Outline, enabled = !operation.busy)
+                            }
+                        }
+                    }
+                }
                 if (status == "submitted") Row(Modifier.padding(top = 12.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    SmallBtn("اعتماد", { review(closingId, "approved", null) }, Modifier.weight(1f), enabled = !operation.busy)
+                    SmallBtn("اعتماد", { review(closingId, "approved", null, c.num("difference") < 0) }, Modifier.weight(1f), enabled = !operation.busy)
                     SmallBtn("يحتاج مراجعة", { flagging = closingId }, Modifier.weight(1f), Variant.Destructive, enabled = !operation.busy)
                 }
             }
         }
+    }
+
+    deciding?.let { closingId ->
+        val short = load.data?.first?.firstOrNull { it.str("id") == closingId }?.num("difference")?.let { -it } ?: 0.0
+        AlertDialog(
+            onDismissRequest = { deciding = null },
+            text = { Text("في هذا الإغلاق عجز ${formatMoney(short)}. من يتحمل العجز؟") },
+            confirmButton = { TextButton({ deciding = null; decide(closingId, true) }) { Text("تحميل العجز على الموزع") } },
+            dismissButton = {
+                Row {
+                    TextButton({ deciding = null; decide(closingId, false) }) { Text("تتحمله الشركة") }
+                    TextButton({ deciding = null }) { Text("لاحقاً") }
+                }
+            },
+        )
     }
 
     flagging?.let { closingId ->

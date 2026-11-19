@@ -1,0 +1,31 @@
+{
+ "tables": {
+  "closings": [
+   {
+    "id": "sup-cl-x",
+    "trip_id": "sup-trip-b",
+    "status": "approved",
+    "expected_cash": 15000,
+    "counted_cash": 14200,
+    "difference": -800,
+    "notes": null,
+    "review_note": null,
+    "created_by": "sup-d6",
+    "created_at": "2026-11-14T07:30:00.000Z",
+    "trips": {
+     "trip_date": "2026-11-14",
+     "trucks": {
+      "name": "شاحنة ٢"
+     }
+    }
+   }
+  ],
+  "pureice_shortage_decision": [],
+  "pureice_staff_ledger": []
+ },
+ "rpc": {
+  "pureice_staff_ledger_support": 1,
+  "pureice_decide_shortage": {},
+  "review_closing": {}
+ }
+}

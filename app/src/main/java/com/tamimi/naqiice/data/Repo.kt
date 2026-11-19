@@ -87,6 +87,8 @@ class Repo(private val context: Context, private val httpClient: okhttp3.OkHttpC
     val changeSupport = MutableStateFlow(false)
     /** The server takes the closing handover (cash, deposit or both). */
     val handoverSupport = MutableStateFlow(false)
+    /** The server keeps staff accounts (shortage decisions, salary deductions). */
+    val ledgerSupport = MutableStateFlow(false)
     val company = MutableStateFlow(Company.DEFAULT)
     val tracking = MutableStateFlow<TrackingState?>(null)
     /** "Keep the screen on" switch on the campaign screen (on by default, as on the web). */
@@ -146,7 +148,7 @@ class Repo(private val context: Context, private val httpClient: okhttp3.OkHttpC
         loop?.cancel()
         val session = api.currentSession()
         ref.value = null; pending.value = emptyList(); lastError.value = null
-        depositSupport.value = false; changeSupport.value = false; handoverSupport.value = false; company.value = Company.DEFAULT
+        depositSupport.value = false; changeSupport.value = false; handoverSupport.value = false; ledgerSupport.value = false; company.value = Company.DEFAULT
         if (session == null) {
             me.value = null; loading.value = false
             trackingController?.invoke(this)
@@ -161,6 +163,7 @@ class Repo(private val context: Context, private val httpClient: okhttp3.OkHttpC
             depositSupport.value = store.getCache("${next.id}:deposit-support") == "true"
             changeSupport.value = store.getCache("${next.id}:invoice-change-support") == "true"
             handoverSupport.value = store.getCache("${next.id}:closing-handover-support") == "true"
+            ledgerSupport.value = store.getCache("${next.id}:staff-ledger-support") == "true"
             store.cacheObject(next.id, "company")?.let { company.value = it.toCompany() }
         }
         reloadPending()
@@ -265,6 +268,7 @@ class Repo(private val context: Context, private val httpClient: okhttp3.OkHttpC
             Triple("pureice_deposit_support", "deposit-support", depositSupport),
             Triple("pureice_invoice_change_support", "invoice-change-support", changeSupport),
             Triple("pureice_closing_handover_support", "closing-handover-support", handoverSupport),
+            Triple("pureice_staff_ledger_support", "staff-ledger-support", ledgerSupport),
         )) runCatching {
             val supported = engine.featureSupport(user.id, function) ?: return@runCatching
             if (generation != version) return@runCatching

@@ -1,5 +1,7 @@
 package com.tamimi.naqiice
 
+import org.junit.Assert.assertTrue
+import androidx.compose.ui.test.performScrollTo
 import android.app.DatePickerDialog
 import android.content.DialogInterface
 import android.graphics.Bitmap
@@ -144,6 +146,43 @@ class SupervisorScreensTest : ScreenHarness() {
         repeat(3) { compose.mainClock.advanceTimeBy(32); pump() }
         compose.mainClock.autoAdvance = true
         compose.waitForIdle()
+    }
+
+    @Test fun undecidedShortageIsListed() {
+        Fixture.staffLedger = true
+        show(Screen.Closings, "supervisor")
+        await("عجز بانتظار القرار")
+        // sup-cl-x: approved 800 short, no decision yet; the other closings need none.
+        compose.onAllNodesWithText("تحميل العجز على الموزع").assertCountEquals(1)
+        shot("sup-closings-shortage")
+        compose.onNodeWithText("تحميل العجز على الموزع").performScrollTo().performClick()
+        compose.waitUntil(30_000) { pump(); Fixture.writes.any { "pureice_decide_shortage" in it } }
+        val call = Fixture.writes.first { "pureice_decide_shortage" in it }
+        assertTrue(call, "\"p_closing\":\"sup-cl-x\"" in call && "\"p_charge\":true" in call)
+    }
+
+    @Test fun approveShortageAsksToCharge() {
+        Fixture.staffLedger = true
+        show(Screen.Closings, "supervisor")
+        await("شاحنة ٥ — 2026-11-12")
+        // Two closings wait for review: adm-cl1 (even) first, then sup-cl-e (500 short).
+        // Approving the short one asks who carries the shortage.
+        compose.onAllNodesWithText("اعتماد")[1].performScrollTo().performClick()
+        compose.waitUntil(10_000) { pump(); Fixture.writes.any { "review_closing" in it } }
+        assertTrue("\"p_id\":\"sup-cl-e\"" in Fixture.writes.first { "review_closing" in it })
+        compose.waitUntil(30_000) { pump(); compose.onAllNodesWithText("من يتحمل العجز", substring = true).fetchSemanticsNodes().isNotEmpty() }
+        shotDialog("sup-closings-shortage-dialog")
+        // The undecided card behind the dialog offers the same choice; take the dialog's (last drawn).
+        compose.onAllNodesWithText("تتحمله الشركة").onLast().performClick()
+        compose.waitUntil(30_000) { pump(); Fixture.writes.any { "pureice_decide_shortage" in it } }
+        val call = Fixture.writes.first { "pureice_decide_shortage" in it }
+        assertTrue(call, "\"p_closing\":\"sup-cl-e\"" in call && "\"p_charge\":false" in call)
+    }
+
+    @Test fun noShortageDecisionWithoutTheFeature() {
+        show(Screen.Closings, "supervisor")
+        await("شاحنة ٥ — 2026-11-12")
+        compose.onAllNodesWithText("تحميل العجز على الموزع").assertCountEquals(0)
     }
 
     @Test fun closingShowsHandover() {
