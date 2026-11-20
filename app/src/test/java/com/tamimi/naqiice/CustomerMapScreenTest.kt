@@ -1,7 +1,9 @@
 package com.tamimi.naqiice
 
 import androidx.compose.ui.test.onNodeWithContentDescription
+import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performClick
 import com.tamimi.naqiice.data.enqueue
 import com.tamimi.naqiice.ui.Screen
@@ -47,4 +49,37 @@ class CustomerMapScreenTest : ScreenHarness() {
         compose.waitForIdle()
         compose.onNodeWithText("خريطة العملاء", substring = true).assertExists()
     }
+
+    private fun waitFor(text: String) =
+        compose.waitUntil(30_000) { pump(); compose.onAllNodesWithText(text, substring = true).fetchSemanticsNodes().isNotEmpty() }
+
+    @Test fun todayButtonOpensTheMap() {
+        show(Screen.Today)
+        compose.onNodeWithText("خريطة العملاء").performScrollTo().performClick()
+        waitFor("تمت زيارتهم")
+    }
+
+    @Test fun filtersByAreaAndProduct() {
+        // m1 (المكلا) and m2, m3 (فوة) have locations; m1 and m2 bought v1, m3 bought v2.
+        Fixture.sharedCharges = true
+        show(Screen.CustomerMap)
+        waitFor("تمت زيارتهم 0 من 3")
+        compose.onNodeWithText("فوة").performScrollTo().performClick()
+        waitFor("تمت زيارتهم 0 من 2")
+        compose.onNodeWithText("ثلج مجروش ٥ كجم").performScrollTo().performClick()
+        waitFor("تمت زيارتهم 0 من 1")
+        shot("customer-map-filtered")
+        compose.onNodeWithText("كل المنتجات").performScrollTo().performClick()
+        waitFor("تمت زيارتهم 0 من 2")
+    }
+
+    @Test fun showsMyLocationAndTheRoute() {
+        Fixture.sharedCharges = true
+        show(Screen.CustomerMap)
+        waitFor("موقعي")
+        waitFor("خط السير · 2 نقطة")
+        compose.onNodeWithText("خط السير · 2 نقطة").performClick()
+        waitFor("خط السير مخفي")
+    }
 }
+

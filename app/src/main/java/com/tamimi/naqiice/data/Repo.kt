@@ -7,6 +7,8 @@ import android.net.NetworkCapabilities
 import com.tamimi.naqiice.core.Row
 import com.tamimi.naqiice.core.bool
 import com.tamimi.naqiice.core.num
+import com.tamimi.naqiice.core.numOrNull
+import com.tamimi.naqiice.core.rows
 import com.tamimi.naqiice.core.parseObject
 import com.tamimi.naqiice.core.str
 import com.tamimi.naqiice.core.strings
@@ -97,6 +99,8 @@ class Repo(private val context: Context, private val httpClient: okhttp3.OkHttpC
     val missingStockSupport = MutableStateFlow(false)
     /** The server gives the campaign's route and the customers' products for the map. */
     val mapExtrasSupport = MutableStateFlow(false)
+    /** Customer id → the products he bought in the last year; refreshed while online, kept offline. */
+    val customerProducts = MutableStateFlow<Map<String, Set<String>>>(emptyMap())
     /** The open campaign's truck: {truck_id, plan, km, issues}; refreshed while online, kept offline. */
     val truckCare = MutableStateFlow<JsonObject?>(null)
     val company = MutableStateFlow(Company.DEFAULT)
@@ -158,7 +162,7 @@ class Repo(private val context: Context, private val httpClient: okhttp3.OkHttpC
         loop?.cancel()
         val session = api.currentSession()
         ref.value = null; pending.value = emptyList(); lastError.value = null
-        depositSupport.value = false; changeSupport.value = false; handoverSupport.value = false; ledgerSupport.value = false; truckCareSupport.value = false; assistantSupport.value = false; missingStockSupport.value = false; mapExtrasSupport.value = false; truckCare.value = null; company.value = Company.DEFAULT
+        depositSupport.value = false; changeSupport.value = false; handoverSupport.value = false; ledgerSupport.value = false; truckCareSupport.value = false; assistantSupport.value = false; missingStockSupport.value = false; mapExtrasSupport.value = false; customerProducts.value = emptyMap(); truckCare.value = null; company.value = Company.DEFAULT
         if (session == null) {
             me.value = null; loading.value = false
             trackingController?.invoke(this)
@@ -178,6 +182,7 @@ class Repo(private val context: Context, private val httpClient: okhttp3.OkHttpC
             assistantSupport.value = store.getCache("${next.id}:trip-assistant-support") == "true"
             missingStockSupport.value = store.getCache("${next.id}:missing-stock-support") == "true"
             mapExtrasSupport.value = store.getCache("${next.id}:map-extras-support") == "true"
+            customerProducts.value = store.cacheObject(next.id, "customer-products")?.rows("rows")?.toProducts() ?: emptyMap()
             truckCare.value = store.cacheObject(next.id, "truck-care")
             store.cacheObject(next.id, "company")?.let { company.value = it.toCompany() }
         }
@@ -309,12 +314,40 @@ class Repo(private val context: Context, private val httpClient: okhttp3.OkHttpC
             store.setCacheObject(user.id, "truck-care", value)
             truckCare.value = value
         }
+        // Who bought what in the last year, for the map's product filter.
+        if (mapExtrasSupport.value) runCatching {
+            val rows = (api.rpc("pureice_customer_products", JsonObject(emptyMap()), api.token()) as? JsonArray)?.mapNotNull { it as? JsonObject } ?: return@runCatching
+            if (generation != version) return@runCatching
+            store.setCacheObject(user.id, "customer-products", buildJsonObject { put("rows", JsonArray(rows)) })
+            customerProducts.value = rows.toProducts()
+        }
         runCatching {
             val row = api.maybeSingle("pureice_company_settings", "select=name,address,phone,footer_note&id=eq.true", api.token())
             if (generation != version) return@runCatching
             val value = row ?: return@runCatching
             store.setCacheObject(user.id, "company", value)
             company.value = value.toCompany()
+        }
+    }
+
+    private fun List<Row>.toProducts(): Map<String, Set<String>> =
+        groupBy({ it.str("customer_id") ?: "" }, { it.str("variant_id") ?: "" }).mapValues { it.value.toSet() }
+
+    /**
+     * The campaign's route as the server has it (also for an assistant, who does not record it),
+     * kept on the phone; offline, the copy last loaded.
+     */
+    suspend fun tripRoute(trip: String): List<com.tamimi.naqiice.core.TrackPoint> = withContext(Dispatchers.IO) {
+        val owner = me.value?.id ?: return@withContext emptyList()
+        val key = "route:$trip"
+        if (mapExtrasSupport.value) runCatching {
+            val rows = (api.rpc("pureice_trip_route", buildJsonObject { put("p_trip", trip) }, api.token()) as? JsonArray)?.mapNotNull { it as? JsonObject }
+            if (rows != null) store.setCacheObject(owner, key, buildJsonObject { put("rows", JsonArray(rows)) })
+        }
+        (store.cacheObject(owner, key)?.rows("rows") ?: emptyList()).mapNotNull { r ->
+            val lat = r.numOrNull("lat") ?: return@mapNotNull null
+            val lng = r.numOrNull("lng") ?: return@mapNotNull null
+            com.tamimi.naqiice.core.TrackPoint(lat, lng, r.str("recorded_at") ?: "")
         }
     }
 

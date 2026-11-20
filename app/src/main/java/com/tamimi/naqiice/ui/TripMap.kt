@@ -87,6 +87,8 @@ private val ROUTE = Color(0xFF007BB2).toArgb()
 private val STOP = Ice.success.toArgb()
 /** A customer not yet invoiced in this campaign: the muted text colour. */
 private val CUSTOMER = Ice.mutedText.toArgb()
+/** The phone's own position. */
+private val ME = Color(0xFF2563EB).toArgb()
 
 /** Leaflet's own colours: container background, control frame and control text. */
 private val MAP_BACKGROUND = Color(0xFFDDDDDD)
@@ -133,13 +135,17 @@ fun TripMap(
     description: String = "خريطة مسار الحملة",
     /** When set, tapping a stop calls this instead of showing its label. */
     onStop: ((MapStop) -> Unit)? = null,
+    /** The phone's current position, drawn as "موقعي"; moving it never re-fits the view. */
+    me: TrackPoint? = null,
 ) {
     val tapStop by rememberUpdatedState(onStop)
+    val myPosition by rememberUpdatedState(me)
     val context = LocalContext.current
     val density = context.resources.displayMetrics.density
     var source by remember { mutableIntStateOf(0) }
     var tileError by remember { mutableStateOf(false) }
     var layersOpen by remember { mutableStateOf(false) }
+    var meMarker by remember { mutableStateOf<Marker?>(null) }
     val map = remember {
         Configuration.getInstance().apply {
             userAgentValue = context.packageName
@@ -187,10 +193,24 @@ fun TripMap(
         onDispose { map.onPause(); map.onDetach() }
     }
     LaunchedEffect(source) { map.setTileSource(TILE_SOURCES[source].source) }
+    val meIcon = remember { dot(8f, ME, 0.9f, density) }
+    // The "موقعي" marker, moved in place on each new position.
+    fun placeMe(at: TrackPoint) {
+        val marker = meMarker ?: Marker(map).apply {
+            icon = meIcon
+            setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_CENTER)
+            title = "موقعي"
+            map.overlays.add(this)
+            meMarker = this
+        }
+        marker.position = GeoPoint(at.lat, at.lng)
+    }
+    LaunchedEffect(me) { me?.let { placeMe(it); map.invalidate() } }
     LaunchedEffect(points, sales, open) {
         InfoWindow.closeAllInfoWindowsOn(map)
         map.overlays.clear()
         // Lowest overlay: a tap that hits no marker closes the open label and the layer list.
+        meMarker = null
         map.overlays.add(MapEventsOverlay(object : MapEventsReceiver {
             override fun singleTapConfirmedHelper(p: GeoPoint?): Boolean { InfoWindow.closeAllInfoWindowsOn(map); layersOpen = false; return false }
             override fun longPressHelper(p: GeoPoint?): Boolean = false
@@ -228,7 +248,9 @@ fun TripMap(
             marker(coords[i], if (isLast) last else if (isFirst) first else small, label)
         }
         sales.forEach { marker(GeoPoint(it.lat, it.lng), when (it.style) { StopStyle.Sale -> sale; StopStyle.Customer -> customer; StopStyle.Visited -> visited }, it.label, it) }
-        val all = coords + sales.map { GeoPoint(it.lat, it.lng) }
+        myPosition?.let { placeMe(it) }
+        // With nothing else to show, the view centres on the phone.
+        val all = (coords + sales.map { GeoPoint(it.lat, it.lng) }).ifEmpty { listOfNotNull(myPosition?.let { GeoPoint(it.lat, it.lng) }) }
         // Leaflet's fitBounds({ padding: [30, 30], maxZoom: 16 }): the deepest whole zoom level
         // that shows every point 30px clear of the frame, centred on them.
         fun fit() {
