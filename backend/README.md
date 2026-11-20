@@ -11,6 +11,7 @@ The app talks to the live "Tamimi Ice" Supabase project. Its base schema lives w
 | `93-staff-ledger.sql` | Each employee's account: who carries an approved closing's shortage (`pureice_shortage_decision`, `pureice_decide_shortage`) and charged shortages, salary deductions and adjustments (`pureice_staff_ledger`, `pureice_add_staff_entry`) | `pureice_staff_ledger_support()` |
 | `94-truck-care.sql` | Truck service plans and recorded services (managers), the truck's current odometer, and problem reports from distributors followed from open to fixed (`pureice_truck_service_plan`, `pureice_truck_services`, `pureice_truck_issues` and their functions) | `pureice_truck_care_support()` |
 | `95-trip-assistants.sql` | Assistant distributors on a campaign (`pureice_trip_assistants`, `pureice_set_trip_assistant`, `pureice_my_open_trip`); **changes eight existing functions** (main distributor → main or assistant) and adds a deposits read policy for campaign members. Undo: `95-trip-assistants-rollback.sql` | `pureice_trip_assistant_support()` |
+| `96-shared-charges-and-map.sql` | Charged shortages split equally with assistants; missing returns settled and charged before approval (`pureice_missing_stock`, `pureice_settle_missing_stock`); the campaign's route and customers' products for the map. **Changes `pureice_decide_shortage` and the ledger constraints.** Undo: `96-shared-charges-and-map-rollback.sql` | `pureice_missing_stock_support()`, `pureice_map_extras_support()` |
 
 Rules these files follow:
 
@@ -148,4 +149,38 @@ The security advisor's only new entries are the three functions the app calls
 
 Not covered: a manager can still open a new campaign for a distributor who assists another open
 campaign (`guard_trips` is unchanged). His phone then finds the campaign he leads first.
+
+## 96-shared-charges-and-map.sql
+
+Applied to the live project on 2026-11-20 as migration `pureice_shared_charges_and_map`, after the
+owner approved it. Tests: `backend/test/run.sh backend/96-shared-charges-and-map.sql`: 37 checks, then
+6 after the rollback. The stub `backend/test/96-shared-charges-and-map.stub.sql` is generated from the
+95 stub, the bodies of 93 and 95, and `review_closing` copied verbatim from the live project.
+
+Changes: `pureice_decide_shortage` (only its charge branch: one `shortage` row per person, split by
+`pureice_split_charge`), and the `pureice_staff_ledger` constraints (kind `stock_shortage`; one row per
+closing, person and kind). The ledger held no entries when this was applied. The rollback turns rows
+the old rules would refuse into adjustments for the same person and amount, so balances are kept.
+
+Missing returns: `pureice_settle_missing_stock` writes the bags still on the truck off as a `damaged`
+load row (through the existing guard, so `review_closing` and the web app see the stock as zero),
+values them at `product_variants.price`, and charges the value equally.
+
+Checked on the live project after applying:
+- the eight new and changed function bodies match the tested ones exactly (md5 of each body);
+- in a rolled-back transaction with real accounts, truck, product and customer, the following
+  happened in order:
+  - a supervisor opened a campaign, loaded 5 bags and added an assistant;
+  - the main distributor approved the load, sold 1 bag and sent a closing 10 short;
+  - 2 bags were recorded as returned;
+  - approval was refused while 2 bags were unaccounted for;
+  - the settlement charged 10,000 (2 × 5,000) as 5,000 to each;
+  - approval then succeeded;
+  - the cash shortage was charged 5 to each;
+  - the assistant could read the route and 271 product-history pairs.
+- No rows were left behind.
+
+The security advisor's only new entries are the five functions the app calls
+(`pureice_settle_missing_stock`, `pureice_missing_stock_support`, `pureice_trip_route`,
+`pureice_customer_products`, `pureice_map_extras_support`).
 
