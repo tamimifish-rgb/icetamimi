@@ -28,3 +28,15 @@ fun staffSummary(sales: List<Row>, payments: List<Row>, closings: List<Row>, led
     shortages = closings.filter { it.str("status") == "approved" && it.num("difference") < 0 }.sumOf { -it.num("difference") },
     balance = ledger.sumOf { it.num("amount") },
 )
+
+/**
+ * [total] split equally among [n] people in shares of 0.01 that add up exactly, the first (the
+ * campaign's main distributor) taking the remainder: the server's pureice_split_charge rounding.
+ */
+fun equalShares(total: Double, n: Int): List<Double> {
+    if (n <= 0) return emptyList()
+    val sum = java.math.BigDecimal(total.toString())
+    val each = sum.divide(java.math.BigDecimal(n), 2, java.math.RoundingMode.DOWN)
+    val first = sum.subtract(each.multiply(java.math.BigDecimal(n - 1)))
+    return listOf(first.toDouble()) + List(n - 1) { each.toDouble() }
+}

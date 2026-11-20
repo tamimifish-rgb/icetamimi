@@ -93,6 +93,10 @@ class Repo(private val context: Context, private val httpClient: okhttp3.OkHttpC
     val truckCareSupport = MutableStateFlow(false)
     /** The server has assistant distributors on a campaign. */
     val assistantSupport = MutableStateFlow(false)
+    /** The server settles missing returns (charged to the campaign's people) before approval. */
+    val missingStockSupport = MutableStateFlow(false)
+    /** The server gives the campaign's route and the customers' products for the map. */
+    val mapExtrasSupport = MutableStateFlow(false)
     /** The open campaign's truck: {truck_id, plan, km, issues}; refreshed while online, kept offline. */
     val truckCare = MutableStateFlow<JsonObject?>(null)
     val company = MutableStateFlow(Company.DEFAULT)
@@ -154,7 +158,7 @@ class Repo(private val context: Context, private val httpClient: okhttp3.OkHttpC
         loop?.cancel()
         val session = api.currentSession()
         ref.value = null; pending.value = emptyList(); lastError.value = null
-        depositSupport.value = false; changeSupport.value = false; handoverSupport.value = false; ledgerSupport.value = false; truckCareSupport.value = false; assistantSupport.value = false; truckCare.value = null; company.value = Company.DEFAULT
+        depositSupport.value = false; changeSupport.value = false; handoverSupport.value = false; ledgerSupport.value = false; truckCareSupport.value = false; assistantSupport.value = false; missingStockSupport.value = false; mapExtrasSupport.value = false; truckCare.value = null; company.value = Company.DEFAULT
         if (session == null) {
             me.value = null; loading.value = false
             trackingController?.invoke(this)
@@ -172,6 +176,8 @@ class Repo(private val context: Context, private val httpClient: okhttp3.OkHttpC
             ledgerSupport.value = store.getCache("${next.id}:staff-ledger-support") == "true"
             truckCareSupport.value = store.getCache("${next.id}:truck-care-support") == "true"
             assistantSupport.value = store.getCache("${next.id}:trip-assistant-support") == "true"
+            missingStockSupport.value = store.getCache("${next.id}:missing-stock-support") == "true"
+            mapExtrasSupport.value = store.getCache("${next.id}:map-extras-support") == "true"
             truckCare.value = store.cacheObject(next.id, "truck-care")
             store.cacheObject(next.id, "company")?.let { company.value = it.toCompany() }
         }
@@ -280,6 +286,8 @@ class Repo(private val context: Context, private val httpClient: okhttp3.OkHttpC
             Triple("pureice_staff_ledger_support", "staff-ledger-support", ledgerSupport),
             Triple("pureice_truck_care_support", "truck-care-support", truckCareSupport),
             Triple("pureice_trip_assistant_support", "trip-assistant-support", assistantSupport),
+            Triple("pureice_missing_stock_support", "missing-stock-support", missingStockSupport),
+            Triple("pureice_map_extras_support", "map-extras-support", mapExtrasSupport),
         )) runCatching {
             val supported = engine.featureSupport(user.id, function) ?: return@runCatching
             if (generation != version) return@runCatching

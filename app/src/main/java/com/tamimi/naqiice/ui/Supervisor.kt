@@ -46,6 +46,7 @@ import com.tamimi.naqiice.core.openBlock
 import com.tamimi.naqiice.core.openForTruck
 import com.tamimi.naqiice.core.parseNumber
 import com.tamimi.naqiice.core.remainingStock
+import com.tamimi.naqiice.core.equalShares
 import com.tamimi.naqiice.core.rows
 import com.tamimi.naqiice.core.str
 import com.tamimi.naqiice.data.ApiError
@@ -399,14 +400,18 @@ fun ClosingsScreen() {
     val depositSupport by repo.depositSupport.collectAsState()
     val handoverSupport by repo.handoverSupport.collectAsState()
     val ledgerSupport by repo.ledgerSupport.collectAsState()
+    val missingStockSupport by repo.missingStockSupport.collectAsState()
+    val assistantSupport by repo.assistantSupport.collectAsState()
     var flagging by remember { mutableStateOf<String?>(null) }
+    /** Per trip: stock still on the truck, the assistants, and what was settled as missing. */
+    var shared by remember { mutableStateOf(SharedData()) }
     var handovers by remember { mutableStateOf<List<DataRow>>(emptyList()) }
     /** closing id → charged (true) or absorbed (false). */
     var decisions by remember { mutableStateOf<Map<String, Boolean>>(emptyMap()) }
     /** An approved shortage the supervisor is asked about right after approving it. */
     var deciding by remember { mutableStateOf<String?>(null) }
 
-    val load = rememberLoaded(me?.id, depositSupport, handoverSupport, ledgerSupport) { bearer ->
+    val load = rememberLoaded(me?.id, depositSupport, handoverSupport, ledgerSupport, missingStockSupport, assistantSupport) { bearer ->
         decisions = if (!ledgerSupport) emptyMap() else try {
             repo.api.selectAll("pureice_shortage_decision", "select=closing_id,charged&order=closing_id", bearer)
                 .mapNotNull { row -> row.str("closing_id")?.let { it to (row.bool("charged") == true) } }.toMap()
@@ -420,7 +425,14 @@ fun ClosingsScreen() {
         val deposits = if (!depositSupport) emptyList() else try {
             repo.api.selectAll("pureice_deposits", "select=*&order=id", bearer)
         } catch (e: ApiError) { emptyList() } catch (e: IOException) { emptyList() }
+        shared = loadShared(repo.api, bearer, closings, missingStockSupport, assistantSupport)
         closings to deposits
+    }
+
+    fun settle(id: String) = operation.run {
+        repo.api.rpc("pureice_settle_missing_stock", buildJsonObject { put("p_closing", id) }, repo.api.token())
+        toast("سُجّل النقص على الموزعين")
+        load.reload()
     }
 
     fun review(id: String, status: String, note: String?, short: Boolean = false) = operation.run {
@@ -488,6 +500,25 @@ fun ClosingsScreen() {
                     if (handover != null && handover.num("transfer_amount") > 0) DepositSlipButton(handover.str("slip_path"), "عرض إشعار الإيداع")
                 }
                 Text(formatDate(c.str("created_at")), Modifier.padding(top = 4.dp), style = T.xs.muted)
+                val tripId = c.str("trip_id")
+                // Who shares this campaign's charges: its main distributor, then the assistants.
+                val people = listOfNotNull(c.str("created_by")) + shared.assistants[tripId].orEmpty().filter { it != c.str("created_by") }
+                fun named(amounts: List<Double>) = people.zip(amounts).joinToString("، ") { (id, amount) -> "${shared.names[id] ?: ""} ${formatMoney(amount)}" }
+                if (missingStockSupport && (status == "submitted" || status == "flagged")) {
+                    val items = shared.missing(tripId)
+                    if (items.isNotEmpty()) Column(Modifier.padding(top = 8.dp).fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        val total = items.sumOf { it.value }
+                        Text("نقص في المرتجع", style = T.sm.bold.color(Ice.destructive))
+                        items.forEach { Text("${it.name}: ${formatNum(it.qty)} × ${formatMoney(it.price)} = ${formatMoney(it.value)}", style = T.sm) }
+                        Text("الإجمالي: ${formatMoney(total)}", style = T.sm.bold)
+                        Text("على: " + named(equalShares(total, people.size)), style = T.sm)
+                        SmallBtn("تسجيل النقص على الموزعين", { settle(closingId) }, Modifier.fillMaxWidth(), Variant.Destructive, enabled = !operation.busy)
+                    }
+                }
+                shared.settled[closingId]?.let { total -> Text("نقص المرتجع المسجل: ${formatMoney(total)}", Modifier.padding(top = 4.dp), style = T.sm.bold.color(Ice.destructive)) }
+                if (ledgerSupport && c.num("difference") < 0 && people.size > 1 && decisions[closingId] == null) {
+                    Text("يُقسم العجز بالتساوي على: " + people.joinToString("، ") { shared.names[it] ?: "" }, Modifier.padding(top = 4.dp), style = T.sm)
+                }
                 if (ledgerSupport && status == "approved" && c.num("difference") < 0) {
                     when (decisions[closingId]) {
                         true -> Text("العجز: على حساب الموزع", Modifier.padding(top = 4.dp), style = T.sm.bold.color(Ice.destructive))
@@ -513,7 +544,11 @@ fun ClosingsScreen() {
         val short = load.data?.first?.firstOrNull { it.str("id") == closingId }?.num("difference")?.let { -it } ?: 0.0
         AlertDialog(
             onDismissRequest = { deciding = null },
-            text = { Text("في هذا الإغلاق عجز ${formatMoney(short)}. من يتحمل العجز؟") },
+            text = {
+                val closing = load.data?.first?.firstOrNull { it.str("id") == closingId }
+                val helpers = shared.assistants[closing?.str("trip_id")].orEmpty().filter { it != closing?.str("created_by") }
+                Text("في هذا الإغلاق عجز ${formatMoney(short)}. من يتحمل العجز؟" + if (helpers.isEmpty()) "" else " يُقسم بالتساوي على الموزع ومساعديه.")
+            },
             confirmButton = { TextButton({ deciding = null; decide(closingId, true) }) { Text("تحميل العجز على الموزع") } },
             dismissButton = {
                 Row {
@@ -528,3 +563,41 @@ fun ClosingsScreen() {
         ReasonDialog("سبب الإعادة للموزع (ما الذي يجب تصحيحه؟)", "موافق", { flagging = null }) { note -> flagging = null; review(closingId, "flagged", note) }
     }
 }
+
+private class MissingItem(val name: String, val qty: Double, val price: Double, val value: Double)
+
+/** Stock left on each sent closing's truck, each trip's assistants and names, and settled totals. */
+private class SharedData(
+    val stock: List<DataRow> = emptyList(),
+    val prices: Map<String, Pair<String, Double>> = emptyMap(),
+    val assistants: Map<String?, List<String>> = emptyMap(),
+    val names: Map<String, String> = emptyMap(),
+    /** closing id → value settled as missing. */
+    val settled: Map<String, Double> = emptyMap(),
+) {
+    /** The bags still on [tripId]'s truck after returns and damaged, valued at the product's price. */
+    fun missing(tripId: String?): List<MissingItem> = stock.filter { it.str("trip_id") == tripId }.mapNotNull { row ->
+        val qty = remainingStock(row.num("loaded"), row.num("sold"), row.num("returned"), row.num("damaged"))
+        if (qty <= 0.0) return@mapNotNull null
+        val (name, price) = prices[row.str("variant_id")] ?: ("" to 0.0)
+        MissingItem(name, qty, price, java.math.BigDecimal((qty * price).toString()).setScale(2, java.math.RoundingMode.HALF_UP).toDouble())
+    }
+}
+
+/** Optional features: a failure leaves the closings as they were. */
+private suspend fun loadShared(api: com.tamimi.naqiice.data.Api, bearer: String, closings: List<DataRow>, missingStock: Boolean, assistants: Boolean): SharedData {
+    if (!missingStock && !assistants) return SharedData()
+    return try {
+        val open = closings.filter { it.str("status") == "submitted" || it.str("status") == "flagged" }.mapNotNull { it.str("trip_id") }.distinct()
+        val tripIds = closings.mapNotNull { it.str("trip_id") }.distinct()
+        val stock = if (missingStock && open.isNotEmpty()) api.selectAll("trip_stock", "select=*&trip_id=in.(${open.joinToString(",")})", bearer) else emptyList()
+        val prices = if (missingStock) api.selectAll("product_variants", "select=id,name,price&order=id", bearer)
+            .mapNotNull { v -> v.str("id")?.let { it to ((v.str("name") ?: "") to v.num("price")) } }.toMap() else emptyMap()
+        val helpers = if (assistants && tripIds.isNotEmpty()) api.selectAll("pureice_trip_assistants", "select=trip_id,user_id&order=added_at,user_id", bearer) else emptyList()
+        val settled = if (missingStock) api.selectAll("pureice_missing_stock", "select=closing_id,value&order=closing_id", bearer)
+            .groupBy { it.str("closing_id") ?: "" }.mapValues { (_, rows) -> rows.sumOf { it.num("value") } } else emptyMap()
+        val names = api.selectAll("profiles", "select=id,full_name&order=id", bearer).mapNotNull { p -> p.str("id")?.let { it to (p.str("full_name") ?: "") } }.toMap()
+        SharedData(stock, prices, helpers.groupBy({ it.str("trip_id") }, { it.str("user_id") ?: "" }), names, settled)
+    } catch (e: ApiError) { SharedData() } catch (e: IOException) { SharedData() }
+}
+
