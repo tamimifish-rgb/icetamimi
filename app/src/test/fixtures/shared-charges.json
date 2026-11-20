@@ -1,0 +1,119 @@
+{
+ "tables": {
+  "trip_stock": [
+   {
+    "trip_id": "sup-trip-e",
+    "variant_id": "v1",
+    "loaded": 50,
+    "sold": 40,
+    "returned": 7,
+    "damaged": 0
+   },
+   {
+    "trip_id": "sup-trip-e",
+    "variant_id": "v2",
+    "loaded": 10,
+    "sold": 6,
+    "returned": 4,
+    "damaged": 0
+   }
+  ],
+  "pureice_trip_assistants": [
+   {
+    "trip_id": "sup-trip-e",
+    "user_id": "sup-d7",
+    "added_by": "sup-sv1",
+    "added_at": "2026-11-14T06:30:00.000Z"
+   }
+  ],
+  "pureice_missing_stock": [],
+  "customers": [
+   {
+    "id": "m1",
+    "name": "مخبز الريان",
+    "phone": null,
+    "region_id": "r1",
+    "location_notes": "",
+    "lat": 14.531,
+    "lng": 49.121,
+    "credit_limit": 0,
+    "truck_id": "t1",
+    "active": true
+   },
+   {
+    "id": "m2",
+    "name": "مطعم البحر",
+    "phone": null,
+    "region_id": "r2",
+    "location_notes": "",
+    "lat": 14.535,
+    "lng": 49.125,
+    "credit_limit": 0,
+    "truck_id": "t1",
+    "active": true
+   },
+   {
+    "id": "m3",
+    "name": "بقالة الوادي",
+    "phone": null,
+    "region_id": "r2",
+    "location_notes": "",
+    "lat": 14.538,
+    "lng": 49.128,
+    "credit_limit": 0,
+    "truck_id": "t1",
+    "active": true
+   }
+  ]
+ },
+ "rpc": {
+  "pureice_missing_stock_support": 1,
+  "pureice_settle_missing_stock": {
+   "items": [],
+   "total": 0,
+   "shares": []
+  },
+  "pureice_trip_assistant_support": 1,
+  "pureice_staff_ledger_support": 1,
+  "pureice_map_extras_support": 1,
+  "pureice_trip_route": [
+   {
+    "lat": 14.53,
+    "lng": 49.12,
+    "recorded_at": "2026-11-14T06:00:00.000Z"
+   },
+   {
+    "lat": 14.533,
+    "lng": 49.123,
+    "recorded_at": "2026-11-14T07:00:00.000Z"
+   }
+  ],
+  "pureice_customer_products": [
+   {
+    "customer_id": "m1",
+    "variant_id": "v1"
+   },
+   {
+    "customer_id": "m3",
+    "variant_id": "v2"
+   },
+   {
+    "customer_id": "m2",
+    "variant_id": "v1"
+   }
+  ],
+  "pureice_my_open_trip": {
+   "trip": {
+    "id": "33333333-3333-3333-3333-333333333333",
+    "truck_id": "t1",
+    "distributor_id": "11111111-1111-1111-1111-111111111111",
+    "status": "open",
+    "trip_date": "2026-11-14",
+    "loading_approved_at": "2026-11-14T05:00:00+00:00",
+    "created_at": "2026-11-14T04:00:00+00:00"
+   },
+   "role": "main",
+   "assistants": []
+  }
+ }
+}

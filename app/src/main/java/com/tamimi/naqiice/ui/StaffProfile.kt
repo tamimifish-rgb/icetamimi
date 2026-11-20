@@ -42,7 +42,7 @@ private class StaffData(
     val decisions: Map<String, Boolean>,
 )
 
-private val KIND = mapOf("shortage" to "عجز إغلاق", "deduction" to "خصم من الراتب", "adjustment" to "تسوية")
+private val KIND = mapOf("shortage" to "عجز إغلاق", "stock_shortage" to "نقص مرتجع", "deduction" to "خصم من الراتب", "adjustment" to "تسوية")
 
 /**
  * One employee's profile: sales figures for a period, his closings and, with the staff-account

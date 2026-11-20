@@ -62,4 +62,26 @@ class CustomerMapTest {
         assertEquals(0, result.pins.size)
         assertEquals(1, result.unplaced)
     }
+
+    private fun inRegion(id: String, region: String) = buildJsonObject { put("id", id); put("name", "عميل $id"); put("region_id", region); put("lat", 14.5); put("lng", 49.1) }
+    private val areaCustomers = listOf(inRegion("r1a", "r1"), inRegion("r2a", "r2"), inRegion("r2b", "r2"), inRegion("r2c", "r2"))
+    /** Bought in the last year (server history): r1a and r2a bought v1, r2b bought v2. */
+    private val bought = mapOf("r1a" to setOf("v1"), "r2a" to setOf("v1"), "r2b" to setOf("v2"))
+
+    @Test fun filterByArea() {
+        val result = customerPins(areaCustomers, emptyList(), region = "r2")
+        assertEquals(listOf("r2a", "r2b", "r2c"), result.pins.map { it.id })
+    }
+
+    @Test fun filterByProductFromHistoryOrThisCampaign() {
+        // r2c bought v1 only today, on the phone: it counts too.
+        val result = customerPins(areaCustomers, listOf(pendingSale("r2c")), variant = "v1", bought = bought)
+        assertEquals(listOf("r1a", "r2a", "r2c"), result.pins.map { it.id })
+    }
+
+    @Test fun filterByAreaAndProduct() {
+        val result = customerPins(areaCustomers, emptyList(), region = "r2", variant = "v1", bought = bought)
+        assertEquals(listOf("r2a"), result.pins.map { it.id })
+    }
 }
+

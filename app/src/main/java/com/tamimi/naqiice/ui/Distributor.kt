@@ -133,6 +133,7 @@ fun TodayScreen() {
             Triple("إيداعات", formatMoney(day.deposits), Ice.foreground),
         ))
 
+        if (trip != null) Btn("خريطة العملاء", { nav.go(Screen.CustomerMap) }, Modifier.fillMaxWidth(), Variant.Outline, height = 48.dp, icon = Lucide.Map)
         // grid grid-cols-3 gap-2
         val quick = listOfNotNull(
             Quick(Screen.Sale(), "فاتورة بيع", Lucide.ShoppingCart), Quick(Screen.Payment(), "تحصيل دين", Lucide.Wallet),

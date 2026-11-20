@@ -55,6 +55,8 @@ class Fixture(private val base: JsonObject) : Interceptor {
         @Volatile var truckCare = false
         /** Assistant distributors: null off; "assistant": the owner assists sup-d2's campaign; "main": he leads it with sup-d7. */
         @Volatile var assistant: String? = null
+        /** Missing returns charged, shortages shared with assistants, the map's route and product history. */
+        @Volatile var sharedCharges = false
         /** Every write the app sent: "POST /rest/v1/rpc/pureice_box_move {…}". */
         val writes = java.util.concurrent.CopyOnWriteArrayList<String>()
         private fun merge(into: JsonObject, extra: JsonObject): JsonObject {
@@ -82,7 +84,8 @@ class Fixture(private val base: JsonObject) : Interceptor {
         val mine = buildJsonObject { put("trip", trip); put("role", "main"); put("assistants", JsonArray(listOf(JsonPrimitive("sup-d7")))) }
         withAssistant.with("rpc" to JsonObject(withAssistant.obj("rpc")!! + ("pureice_my_open_trip" to mine)))
     }
-    private val data: JsonObject get() = if (assistant == "assistant") withAssistant else if (assistant == "main") withMainAndAssistant else if (boxes) withBoxes else if (customerMap) withCustomerMap else if (handover) withHandover else if (staffLedger) withStaffLedger else if (truckCare) withTruckCare else base
+    private val withSharedCharges by lazy { merge(base, parseObject(File("src/test/fixtures/shared-charges.json").readText())) }
+    private val data: JsonObject get() = if (sharedCharges) withSharedCharges else if (assistant == "assistant") withAssistant else if (assistant == "main") withMainAndAssistant else if (boxes) withBoxes else if (customerMap) withCustomerMap else if (handover) withHandover else if (staffLedger) withStaffLedger else if (truckCare) withTruckCare else base
 
     private fun tables(): Map<String, List<Row>> {
         val owner = data.str("owner")
