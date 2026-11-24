@@ -12,6 +12,7 @@ The app talks to the live "Tamimi Ice" Supabase project. Its base schema lives w
 | `94-truck-care.sql` | Truck service plans and recorded services (managers), the truck's current odometer, and problem reports from distributors followed from open to fixed (`pureice_truck_service_plan`, `pureice_truck_services`, `pureice_truck_issues` and their functions) | `pureice_truck_care_support()` |
 | `95-trip-assistants.sql` | Assistant distributors on a campaign (`pureice_trip_assistants`, `pureice_set_trip_assistant`, `pureice_my_open_trip`); **changes eight existing functions** (main distributor → main or assistant) and adds a deposits read policy for campaign members. Undo: `95-trip-assistants-rollback.sql` | `pureice_trip_assistant_support()` |
 | `96-shared-charges-and-map.sql` | Charged shortages split equally with assistants; missing returns settled and charged before approval (`pureice_missing_stock`, `pureice_settle_missing_stock`); the campaign's route and customers' products for the map. **Changes `pureice_decide_shortage` and the ledger constraints.** Undo: `96-shared-charges-and-map-rollback.sql` | `pureice_missing_stock_support()`, `pureice_map_extras_support()` |
+| `97-late-closing-handover.sql` | A first closing handover that reaches the server after the closing was approved is recorded (it was refused for good); changing one after approval is still refused. **Changes one condition in `pureice_save_closing_handover`.** Undo: `97-late-closing-handover-rollback.sql` | (uses 92's) |
 
 Rules these files follow:
 
@@ -183,4 +184,24 @@ Checked on the live project after applying:
 The security advisor's only new entries are the five functions the app calls
 (`pureice_settle_missing_stock`, `pureice_missing_stock_support`, `pureice_trip_route`,
 `pureice_customer_products`, `pureice_map_extras_support`).
+
+## 97-late-closing-handover.sql
+
+Applied to the live project on 2026-11-24 as migration `pureice_late_closing_handover`, after the
+owner approved it. Tests: `backend/test/run.sh backend/97-late-closing-handover.sql`: 15 checks, then
+3 after the rollback.
+
+Why: أمين المشجري's closing `44891a67` (23 Nov, counted 101,000) was approved 2½ minutes after it
+reached the server; its handover (a transfer with a slip photo) reached the server only afterwards,
+and 92 refused it for good ("تم اعتماد الإغلاق؛ لا يمكن تعديل طريقة التسليم"), leaving it blocked on
+his phone. Before applying, the live function matched 92 by md5 (`ad7c4709…`).
+
+Checked on the live project after applying:
+- the function body matches the tested one (md5 `05bb92f5…`);
+- his phone synced at 14:56:17, seconds later, and the handover is now recorded: 101,000 by
+  transfer, with the slip;
+- in a rolled-back transaction, a different handover for that closing is refused as a change after
+  approval, and another distributor is refused.
+
+The security advisor is unchanged.
 
